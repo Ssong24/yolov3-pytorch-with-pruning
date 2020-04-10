@@ -22,7 +22,7 @@ ModuleList(
     (BatchNorm2d): BatchNorm2d(64, eps=0.0001, momentum=0.003, affine=True, track_running_stats=True)
     (activation): LeakyReLU(negative_slope=0.1, inplace=True)
   )
-  (4): weightedFeatureFusion()
+  (4): weightedFeatureFusion() #shortcut
   (5): Sequential(
     (Conv2d): Conv2d(64, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
     (BatchNorm2d): BatchNorm2d(128, eps=0.0001, momentum=0.003, affine=True, track_running_stats=True)

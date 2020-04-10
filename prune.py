@@ -3,18 +3,16 @@
 Pengyi Zhang
 201906
 """
-import cv2
+
 
 import argparse
-import json
-import os
-
-import numpy
-
-import torch
-import torch.nn as nn
-
-from torch.utils.data import DataLoader
+# import cv2
+# import json
+# import os
+# import numpy
+# import torch
+# import torch.nn as nn
+# from torch.utils.data import DataLoader
 
 from models import *
 from utils.datasets import *
@@ -25,6 +23,21 @@ from utils.parse_config import *
 (1) Use global threshold to control pruning ratio
 (2) Use local threshold to keep at least 10% unpruned 
 """
+
+def list_without_bracket(temp_line):
+    if isinstance(temp_line, np.ndarray):
+        temp_line = temp_line.ravel('F') # flatten
+        temp_line = temp_line.tolist() # np.array to list
+
+    for i in range(len(temp_line)):
+        line = str(temp_line).replace(']','').replace('[','')
+        if i != len(temp_line)-1:
+            line += ','
+
+
+    return line
+
+
 
 def route_conv(layer_index, module_defs):
     """ find the convolutional layers connected by route layer
@@ -39,7 +52,7 @@ def route_conv(layer_index, module_defs):
         before_conv_id += route_conv(layer_index-1, module_defs)
 
     elif mtype == "route":
-        layer_is = [int(x)+layer_index if int(x) < 0 else int(x) for x in module_defs[layer_index]['layers'].split(',')]
+        layer_is = [int(x)+layer_index if int(x) < 0 else int(x) for x in module_defs[layer_index]['layers']]
         for layer_i in layer_is: 
             if module_defs[layer_i]['type'] == 'convolutional':
                 before_conv_id += [layer_i]
@@ -51,6 +64,7 @@ def route_conv(layer_index, module_defs):
 
 def write_model_cfg(old_path, new_path, new_module_defs):
     """Parses the yolo-v3 layer configuration file and returns module definitions"""
+    print('Writing model configuration file...')
     lines = []
     with open(old_path, 'r') as fp:
         old_lines = fp.readlines()
@@ -63,7 +77,7 @@ def write_model_cfg(old_path, new_path, new_module_defs):
         
         mtype = module_def['type']
         lines.append("[{}]\n".format(mtype))
-        print("layer:", i, mtype)
+        #print("layer:", i, mtype)
         if mtype == "convolutional":
             bn = 0
             filters = module_def['filters']
@@ -77,26 +91,30 @@ def write_model_cfg(old_path, new_path, new_module_defs):
             lines.append("pad={}\n".format(module_def['pad']))
             lines.append("activation={}\n\n".format(module_def['activation']))
         elif mtype == "shortcut":
-            lines.append("from={}\n".format(module_def['from']))
+            _temp_from = list_without_bracket(module_def['from'])
+            lines.append("from={}\n".format(_temp_from))
             lines.append("activation={}\n\n".format(module_def['activation']))   
         elif mtype == 'route':
-            lines.append("layers={}\n\n".format(module_def['layers']))               
-            
+            _temp_layers = list_without_bracket(module_def['layers'])
+            lines.append('layers={}\n\n'.format(_temp_layers))
+
         elif mtype == 'upsample':
             lines.append("stride={}\n\n".format(module_def['stride']))
         elif mtype == 'maxpool':
             lines.append("stride={}\n".format(module_def['stride']))
             lines.append("size={}\n\n".format(module_def['size']))
         elif mtype == 'yolo':
-            lines.append("mask = {}\n".format(module_def['mask']))
-            lines.append("anchors = {}\n".format(module_def['anchors']))
+            _temp_mask = list_without_bracket(module_def['mask'])
+            lines.append("mask = {}\n".format(_temp_mask))
+            _temp_anchors = list_without_bracket(module_def['anchors'])
+            lines.append("anchors = {}\n".format(_temp_anchors))
             lines.append("classes = {}\n".format(module_def['classes']))
             lines.append("num = {}\n".format(module_def['num']))
             lines.append("jitter = {}\n".format(module_def['jitter']))
             lines.append("ignore_thresh = {}\n".format(module_def['ignore_thresh']))
             lines.append("truth_thresh = {}\n".format(module_def['truth_thresh']))
             lines.append("random = {}\n\n".format(module_def['random']))
-    
+
     with open(new_path, "w") as f:
         f.writelines(lines)
 
@@ -109,12 +127,13 @@ def test(
         overall_ratio=0.5,
         perlayer_ratio=0.1):
 
-    """prune yolov3 and generate cfg, weights
+    """prune yolo and generate cfg, weights
     """
-    if save != None:
+    if save is not None:
         if not os.path.exists(save):
             os.makedirs(save)
     device = torch_utils.select_device()
+
     # Initialize model
     model = Darknet(cfg, img_size).to(device)
 
@@ -125,7 +144,7 @@ def test(
     else:  # darknet format
         _ = load_darknet_weights(model, weights)
 
-##  output a new cfg file
+    # output a new cfg file
     total = 0
     for m in model.modules():
         if isinstance(m, nn.BatchNorm2d):
@@ -142,34 +161,34 @@ def test(
     sorted_bn, sorted_index = torch.sort(bn)
     thresh_index = int(total*overall_ratio)
     thresh = sorted_bn[thresh_index].cuda()
+    print('thresh: ', thresh) # 1.54712e-05
 
     print("--"*30)
     print()
-    #print(list(model.modules()))
+    # print(list(model.modules()))
     # print(model.module_list)
-    # input()
 
+    # Pruning channels in each layer
     proned_module_defs = model.module_defs
     for i, (module_def, module) in enumerate(zip(model.module_defs, model.module_list)):
-        print("layer:", i)
         mtype = module_def['type']
-        if mtype  == 'convolutional':
+        if mtype == 'convolutional':
             bn = int(module_def['batch_normalize'])
             if bn:
-                m = getattr(module, 'BatchNorm2d')#'batch_norm_%d' % i) # batch_norm layer
+                m = getattr(module, 'BatchNorm2d') #'batch_norm_%d' % i) # batch_norm layer
                 weight_copy = m.weight.data.abs().clone()
-                channels = weight_copy.shape[0] #
+                channels = weight_copy.shape[0] # num of output channels of one Batch Normalization layer
                 min_channel_num = int(channels * perlayer_ratio) if int(channels * perlayer_ratio) > 0 else 1
-                mask = weight_copy.gt(thresh).float().cuda()  
-                
-                if int(torch.sum(mask)) < min_channel_num: 
+                mask = weight_copy.gt(thresh).float().cuda()  # masking for chosen (important) channels
+
+                #print('min_channel_num: ', min_channel_num) # usually 12 or 25
+                if int(torch.sum(mask)) < min_channel_num: # It didn't happen at all!
                     _, sorted_index_weights = torch.sort(weight_copy,descending=True)
-                    mask[sorted_index_weights[:min_channel_num]]=1. 
+                    print(sorted_index_weights)
+                    mask[sorted_index_weights[:min_channel_num]] = 1.
 
-                proned_module_defs[i]['mask'] = mask.clone()
+                proned_module_defs[i]['mask'] = mask.clone() # chosen channel's gamma is over thresh.
 
-                print('layer index: {:d} \t total channel: {:d} \t remaining channel: {:d}'.
-                        format(i, mask.shape[0], int(torch.sum(mask)))) 
 
             print("layer:", mtype)
 
@@ -180,44 +199,40 @@ def test(
             print("layer:", mtype)
 
         elif mtype == 'shortcut':
-            #print('module_def??', module_def)
-            # print('module_def[\'from\']: ', str(module_def['from'][0]))
-            #input()
             layer_i = int(str(module_def['from'][0]))+i
-            print("from layer ", layer_i)
-            print("layer:", mtype)
+            print("from layer ", layer_i, ' layer: ', mtype)
             proned_module_defs[i]['is_access'] = False
-            
 
         elif mtype == 'yolo':
             print("layer:", mtype)
-            
 
-    layer_number = len(proned_module_defs)
-    for i in range(layer_number-1, -1, -1):
+
+    ## ??? ##
+
+    layer_number = len(proned_module_defs)  # 113
+    for i in range(layer_number-1, -1, -1): # descending order
         mtype = proned_module_defs[i]['type']
-        if mtype == 'shortcut': 
+        if mtype == 'shortcut': # 73, 71,
             if proned_module_defs[i]['is_access']: 
                 continue
-
             Merge_masks =  []
             layer_i = i
             while mtype == 'shortcut':
                 proned_module_defs[layer_i]['is_access'] = True
-
-                if proned_module_defs[layer_i-1]['type'] == 'convolutional': 
+                if proned_module_defs[layer_i-1]['type'] == 'convolutional':  # layer = 73, 60, 35, 11, 4
                     bn = int(proned_module_defs[layer_i-1]['batch_normalize'])
-                    if bn: 
-                        Merge_masks.append(proned_module_defs[layer_i-1]["mask"].unsqueeze(0))
+                    if bn:
+                        Merge_masks.append(proned_module_defs[layer_i-1]["mask"].unsqueeze(0)) #[] --> [ [] ]
 
-                layer_i = int(str(proned_module_defs[layer_i]['from'][0]))+layer_i
+                layer_i = int(str(proned_module_defs[layer_i]['from'][0])) + layer_i
                 mtype = proned_module_defs[layer_i]['type']
 
-                if mtype == 'convolutional':              
+                if mtype == 'convolutional':
                     bn = int(proned_module_defs[layer_i]['batch_normalize'])
-                    if bn: 
+                    if bn:
                         Merge_masks.append(proned_module_defs[layer_i]["mask"].unsqueeze(0))
-                
+
+
 
             if len(Merge_masks) > 1:
                 Merge_masks = torch.cat(Merge_masks, 0)
@@ -227,6 +242,7 @@ def test(
 
             layer_i = i
             mtype = 'shortcut'
+
             while mtype == 'shortcut':
 
                 if proned_module_defs[layer_i-1]['type'] == 'convolutional': 
@@ -242,20 +258,17 @@ def test(
                     if bn:     
                         proned_module_defs[layer_i]["mask"] = merge_mask
 
-
-
     for i, (module_def, module) in enumerate(zip(model.module_defs, model.module_list)):
-        print("layer:", i)
+        #print("layer:", i)
         mtype = module_def['type']
         if mtype  == 'convolutional':
             bn = int(module_def['batch_normalize'])
             if bn:
-
-                layer_i_1 = i - 1
+                #layer_i_1 = i - 1
                 proned_module_defs[i]['mask_before'] = None
 
                 mask_before = []
-                conv_indexs = []
+                #conv_indexs = []
                 if i > 0:
                     conv_indexs = route_conv(i, proned_module_defs)
                     for conv_index in conv_indexs:
@@ -264,23 +277,23 @@ def test(
                    
                             
 
- 
     output_cfg_path = os.path.join(save, "prune.cfg")
     write_model_cfg(cfg, output_cfg_path, proned_module_defs)
 
+    # Load cfg file of pruned model
+    # ??? #
     pruned_model = Darknet(output_cfg_path, img_size).to(device)
-    print(list(pruned_model.modules()))
     for i, (module_def, old_module, new_module) in enumerate(zip(proned_module_defs, model.module_list, pruned_model.module_list)):  
         mtype = module_def['type']
-        print("layer: ",i, mtype)
+        #print("layer: ",i, mtype)
         if mtype  == 'convolutional': # 
             bn = int(module_def['batch_normalize'])
             if bn:
-                new_norm = getattr(new_module, 'batch_norm_%d' % i) # batch_norm layer
-                old_norm = getattr(old_module, 'batch_norm_%d' % i) # batch_norm layer
+                new_norm = getattr(new_module, 'BatchNorm2d')# 'batch_norm_%d' % i) # batch_norm layer
+                old_norm = getattr(old_module, 'BatchNorm2d')#'batch_norm_%d' % i) # batch_norm layer
 
-                new_conv = getattr(new_module, 'conv_%d' % i) # conv layer
-                old_conv = getattr(old_module, 'conv_%d' % i) # conv layer  
+                new_conv = getattr(new_module, 'Conv2d')#'conv_%d' % i) # conv layer
+                old_conv = getattr(old_module, 'Conv2d')#'conv_%d' % i) # conv layer
                 
 
                 idx1 = np.squeeze(np.argwhere(np.asarray(module_def['mask'].cpu().numpy())))
@@ -296,13 +309,12 @@ def test(
                 new_norm.bias.data = old_norm.bias.data[idx1.tolist()].clone()
                 new_norm.running_mean = old_norm.running_mean[idx1.tolist()].clone()
                 new_norm.running_var = old_norm.running_var[idx1.tolist()].clone()
-                
 
                 print('layer index: ', i, 'idx1: ', idx1)     
             else: 
 
-                new_conv = getattr(new_module, 'conv_%d' % i) # batch_norm layer
-                old_conv = getattr(old_module, 'conv_%d' % i) # batch_norm layer
+                new_conv = getattr(new_module, 'Conv2d')#'conv_%d' % i) # batch_norm layer
+                old_conv = getattr(old_module, 'Conv2d')#'conv_%d' % i) # batch_norm layer
                 idx2 = np.squeeze(np.argwhere(np.asarray(proned_module_defs[i-1]['mask'].cpu().numpy())))
                 new_conv.weight.data = old_conv.weight.data[:,idx2.tolist(),:,:].clone()
                 new_conv.bias.data = old_conv.bias.data.clone()
@@ -319,12 +331,13 @@ def test(
 
 
 
-    # test
+    # test the pruned model
     pruned_model.eval()
-    img_path = "test.jpg"
+    img_path = "../DL-DATASET/etri-safety_system/distort/images/640x480/GH020005_006.jpg"
     
     org_img = cv2.imread(img_path)  # BGR
-    img, ratiow, ratioh, padw, padh = letterbox(org_img, new_shape=[img_size,img_size], mode='rect')
+    img, _, _ = letterbox(org_img, [img_size,img_size])#, mode='rect')
+
 
     # Normalize
     img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
@@ -337,16 +350,20 @@ def test(
     # Run model
     inf_out, train_out = pruned_model(imgs)  # inference and training outputs
     # Run NMS
-    output = non_max_suppression(inf_out, conf_thres=0.005, nms_thres=0.5)
+    output = non_max_suppression(inf_out, conf_thres=0.3, iou_thres=0.5)
     # Statistics per image
+
     for si, pred in enumerate(output):
         if pred is None:
             continue
         if True:
             box = pred[:, :4].clone()  # xyxy
             scale_coords(imgs[si].shape[1:], box, org_img.shape[:2])  # to original shape
+
             for di, d in enumerate(pred):
-                category_id = int(d[6])
+                print('di: {} \t d:{} '.format(di, d) )
+
+                category_id = int(d[5])
                 left, top, right, bot = [float(x) for x in box[di]]
                 confidence = float(d[4])
 
@@ -354,14 +371,17 @@ def test(
                                 (255, 0, 0), 2)
                 cv2.putText(org_img, str(category_id) + ":" + str('%.1f' % (float(confidence) * 100)) + "%", (int(left), int(top) - 8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)  
-        cv2.imshow("result", org_img)
-        cv2.waitKey(-1)            
+
+        # cv2.imshow("result", org_img) --> Cannot terminate program..
+        # cv2.waitKey(0)
         cv2.imwrite('result_{}'.format(img_path), org_img)
 
 
     # convert pt to weights:
+    print('Saving weight....')
     prune_c_weights_path = os.path.join(save, "prune.weights")
     save_weights(pruned_model, prune_c_weights_path)
+    print('Done!')
     
 
 if __name__ == '__main__':
@@ -370,7 +390,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch Slimming Yolov3 prune')
     parser.add_argument('--cfg', type=str, default='VisDrone2019/yolov3-spp3.cfg', help='cfg file path')
     parser.add_argument('--weights', type=str, default='yolov3-spp3_final.weights', help='path to weights file')
-    parser.add_argument('--img_size', type=int, default=608, help='inference size (pixels)')
+    parser.add_argument('--img_size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--save', default='prune', type=str, metavar='PATH', help='path to save pruned model (default: none)')
     parser.add_argument('--overall_ratio', type=float, default=0.5, help='scale sparse rate (default: 0.5)')    
     parser.add_argument('--perlayer_ratio', type=float, default=0.1, help='minimal scale sparse rate (default: 0.1) to prevent disconnect')    

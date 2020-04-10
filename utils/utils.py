@@ -513,14 +513,15 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, multi_label=T
     method = 'vision_batch'
     batched = 'batch' in method  # run once per image, all classes simultaneously
     nc = prediction[0].shape[1] - 5  # number of classes
-    multi_label &= nc > 1  # multiple labels per box
+    multi_label &= nc > 1  # multiple labels per box # True
     output = [None] * len(prediction)
     for image_i, pred in enumerate(prediction):
         # Apply conf constraint
         pred = pred[pred[:, 4] > conf_thres]
 
         # Apply width-height constraint
-        pred = pred[((pred[:, 2:4] > min_wh) & (pred[:, 2:4] < max_wh)).all(1)]
+        # pred[:,2:4] = pred[:, 2], pred[:,3]
+        pred = pred[((pred[:, 2:4] > min_wh) & (pred[:, 2:4] < max_wh)).all(1)] # pred[:,2:4] > min_wh ; if one of the array is bigger than min_wh, returns True
 
         # If none remain process next image
         if not pred.shape[0]:
@@ -570,7 +571,7 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, multi_label=T
             output[image_i] = pred[i]
             continue
 
-        # All other NMS methods
+        # All other NMS methods except Batched NMS
         det_max = []
         cls = pred[:, -1]
         for c in cls.unique():
@@ -635,7 +636,7 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, multi_label=T
         if len(det_max):
             det_max = torch.cat(det_max)  # concatenate
             output[image_i] = det_max[(-det_max[:, 4]).argsort()]  # sort
-
+    # output: x, y, x, y, confidence, category_id
     return output
 
 

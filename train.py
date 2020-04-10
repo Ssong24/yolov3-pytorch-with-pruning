@@ -85,8 +85,8 @@ def train():
     train_path = data_dict['train']
     test_path = data_dict['valid']
     nc = 1 if opt.single_cls else int(data_dict['classes'])  # number of classes
-    print('data_dict keys?', data_dict.keys())
-    print('opt.data: %s nc: %d\n\n\n'%(opt.data, nc))
+    #print('data_dict keys?', data_dict.keys())
+
 
     # Remove previous results
     for f in glob.glob('*_batch*.png') + glob.glob(results_file):
@@ -328,8 +328,7 @@ def train():
         # ema.update_attr(model)
         final_epoch = epoch + 1 == epochs
         if not opt.notest or final_epoch:  # Calculate mAP
-            is_coco = any([x in data for x in ['coco.data', 'coco2014.data', 'coco2017.data']]) and model.nc == 80
-            print('is_coco:', is_coco)
+            is_coco = any([x in data for x in ['coco.data', 'coco2014.data', 'coco2017.data']]) and model.nc == 80 # False
             results, maps = test.test(opt,
                                       cfg,
                                       data,
@@ -363,6 +362,8 @@ def train():
 
         # Save training results in every 10 epochs
         backup_folder = os.path.join(opt.output, 'weights')
+        if not os.path.exists(backup_folder):
+            os.makedirs(backup_folder)
         backup_path = os.path.join(backup_folder, 'backup%g.pt' % epoch)
         if epoch % 10 == 0 and epoch > 250:
             with open(results_file, 'r') as f:
@@ -436,7 +437,7 @@ if __name__ == '__main__':
     parser.add_argument('--multi-scale', action='store_true', help='adjust (67% - 150%) img_size every 10 batches')
     parser.add_argument('--img-size', nargs='+', type=int, default=[416], help='train and test image-sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
-    #parser.add_argument('--resume', action='store_true', help='resume training from last.pt')
+    parser.add_argument('--resume', action='store_true', help='resume training from last.pt')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
     parser.add_argument('--notest', action='store_true', help='only test final epoch')
     parser.add_argument('--evolve', action='store_true', help='evolve hyperparameters')

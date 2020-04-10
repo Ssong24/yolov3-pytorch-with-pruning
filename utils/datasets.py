@@ -288,10 +288,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
 
         # Define labels
-        self.label_files = [x.replace('images', 'labels/yolo').replace(os.path.splitext(x)[-1], '.txt')
+        self.label_files = [x.replace('images\\640x480', 'labels/yolo').replace(os.path.splitext(x)[-1], '.txt')
                             for x in self.img_files]
-        # for x in self.img_files:
-        #     print('label path: ', x.replace('images', 'labels\\yolo').replace(os.path.splitext(x)[-1], '.txt'))
+        for x in self.img_files:
+            print('label path: ', x.replace('images\\640x480', 'labels\\yolo').replace(os.path.splitext(x)[-1], '.txt'))
 
         # Rectangular Training  https://github.com/ultralytics/yolov3/issues/232
         if self.rect:
