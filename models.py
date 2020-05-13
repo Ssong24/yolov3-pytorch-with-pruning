@@ -335,6 +335,7 @@ class Darknet(nn.Module):
 
 
 def get_yolo_layers(model):
+    # Return nth of yolo layer (for YOLOv3, it's located on 82th, 94th, 106th of layers)
     return [i for i, x in enumerate(model.module_defs) if x['type'] == 'yolo']  # [82, 94, 106] for yolov3
 
 

@@ -3,16 +3,7 @@
 Pengyi Zhang
 201906
 """
-
-
 import argparse
-# import cv2
-# import json
-# import os
-# import numpy
-# import torch
-# import torch.nn as nn
-# from torch.utils.data import DataLoader
 
 from models import *
 from utils.datasets import *
@@ -24,27 +15,31 @@ from utils.parse_config import *
 (2) Use local threshold to keep at least 10% unpruned 
 """
 
+
 def list_without_bracket(temp_line):
     if isinstance(temp_line, np.ndarray):
         temp_line = temp_line.ravel('F') # flatten
         temp_line = temp_line.tolist() # np.array to list
 
     for i in range(len(temp_line)):
-        line = str(temp_line).replace(']','').replace('[','')
+        line = str(temp_line).replace(']','').replace('[','') # Remove bracket from list which became list
         if i != len(temp_line)-1:
             line += ','
-
 
     return line
 
 
-
 def route_conv(layer_index, module_defs):
     """ find the convolutional layers connected by route layer
+    When route layer's attributes has only one, it outputs FM of layer indexed by the value.
+    When its attribute has more than two, it returns concatenated FM of layers indexed by the value.
     """
+
     module_def = module_defs[layer_index]
     mtype = module_def['type']
-    
+    # print('module_def: ', module_def)
+    print('layer_index: ', layer_index, 'mtype: ', mtype)
+
     before_conv_id = []
     if mtype in ['convolutional', 'shortcut', 'upsample', 'maxpool']:
         if module_defs[layer_index-1]['type'] == 'convolutional':
@@ -52,13 +47,16 @@ def route_conv(layer_index, module_defs):
         before_conv_id += route_conv(layer_index-1, module_defs)
 
     elif mtype == "route":
+        # put 'layers' attribute to layer_is
         layer_is = [int(x)+layer_index if int(x) < 0 else int(x) for x in module_defs[layer_index]['layers']]
-        for layer_i in layer_is: 
+        print('layer_is: ', layer_is)
+        for layer_i in layer_is:
             if module_defs[layer_i]['type'] == 'convolutional':
-                before_conv_id += [layer_i]
+                before_conv_id += [layer_i] # append layer_i to before_conv_id
             else:
                 before_conv_id += route_conv(layer_i, module_defs)
-        
+    print('before_conv_id: ', before_conv_id)
+
     return before_conv_id
 
 
@@ -129,13 +127,15 @@ def test(
 
     """prune yolo and generate cfg, weights
     """
+    # Create directory if not existed
     if save is not None:
         if not os.path.exists(save):
             os.makedirs(save)
-    device = torch_utils.select_device()
+
+    device = torch_utils.select_device()  # --> cuda?
 
     # Initialize model
-    model = Darknet(cfg, img_size).to(device)
+    model = Darknet(cfg, img_size).to(device) # Hand over configuration file and image size
 
     # Load weights
     if weights.endswith('.pt'):  # pytorch format
@@ -147,197 +147,206 @@ def test(
     # output a new cfg file
     total = 0
     for m in model.modules():
-        if isinstance(m, nn.BatchNorm2d):
-            total += m.weight.data.shape[0] # channels numbers
-    bn = torch.zeros(total)
+        if isinstance(m, nn.BatchNorm2d):  # Total, 72 BatchNorm2d layers
+            total += m.weight.data.shape[0]  # channels numbers
+    bn = torch.zeros(total) # 총 BN layer의 channel 갯수만큼 tensor with zero value
     index = 0
 
     for m in model.modules():
         if isinstance(m, nn.BatchNorm2d):
-            size = m.weight.data.shape[0]
-            bn[index:(index+size)] = m.weight.data.abs().clone()
+            size = m.weight.data.shape[0]  # m.weight.data.shape=  torch.Size([32])
+            # print(m.weight.data.shape) # tensor list which has shape[0] number of values
+            bn[index:(index+size)] = m.weight.data.abs().clone() #
+            # input("Why it's not torch.Size[3,32] but just [32]?" - RGB is 3 channel)
             index += size
 
     sorted_bn, sorted_index = torch.sort(bn)
-    thresh_index = int(total*overall_ratio)
+    thresh_index = int(total*overall_ratio) # total num of all BN layers * overall_ratio
     thresh = sorted_bn[thresh_index].cuda()
-    print('thresh: ', thresh) # 1.54712e-05
 
     print("--"*30)
     print()
-    # print(list(model.modules()))
-    # print(model.module_list)
 
     # Pruning channels in each layer
+    # Record mask for chosen channel in each BN layer of proned_module_defs[i]["mask"]
     proned_module_defs = model.module_defs
     for i, (module_def, module) in enumerate(zip(model.module_defs, model.module_list)):
         mtype = module_def['type']
         if mtype == 'convolutional':
             bn = int(module_def['batch_normalize'])
-            if bn:
-                m = getattr(module, 'BatchNorm2d') #'batch_norm_%d' % i) # batch_norm layer
-                weight_copy = m.weight.data.abs().clone()
-                channels = weight_copy.shape[0] # num of output channels of one Batch Normalization layer
-                min_channel_num = int(channels * perlayer_ratio) if int(channels * perlayer_ratio) > 0 else 1
-                mask = weight_copy.gt(thresh).float().cuda()  # masking for chosen (important) channels
 
-                #print('min_channel_num: ', min_channel_num) # usually 12 or 25
-                if int(torch.sum(mask)) < min_channel_num: # It didn't happen at all!
-                    _, sorted_index_weights = torch.sort(weight_copy,descending=True)
-                    print(sorted_index_weights)
-                    mask[sorted_index_weights[:min_channel_num]] = 1.
+            # print("i: {} \t mtype: {}".format(i, mtype))
+            if bn:  # if 'batch_normalize: 1' --> What is the meaning of 1: there is BN after Conv layer.
+                m = getattr(module, 'BatchNorm2d')
+                weight_copy = m.weight.data.abs().clone()  # copy torch.size([channel num])
+                channels = weight_copy.shape[0]  # num of channels of one BN layer
+                min_channel_num = int(channels * perlayer_ratio) if int(channels * perlayer_ratio) > 0 else 1 # usually perlayer_ratio: 0.1
+                mask = weight_copy.gt(thresh).float().cuda()  # masking for chosen (important) channels whose value is over than threshold
 
-                proned_module_defs[i]['mask'] = mask.clone() # chosen channel's gamma is over thresh.
+                # print('channels: {} \t perlayer_ratio: {} \t min_channel_num: {} '.format(channels, perlayer_ratio, min_channel_num))
+                if int(torch.sum(mask)) < min_channel_num:  # if num of will-be-pruned channels is smaller than minimum pruned-channels
+                    _, sorted_index_weights = torch.sort(weight_copy, descending=True)  # From biggest number to lowest
+                    # print('sorted_index_weights: ', sorted_index_weights)
+                    # print('sorted_index_weights[:min_channel_num]: ', sorted_index_weights[:min_channel_num]) # 최소 있어야 할 채널 수
+                    # print(sorted_index_weights)
+                    mask[sorted_index_weights[:min_channel_num]] = 1. # Index of important channels --> mask = 1
+
+                proned_module_defs[i]['mask'] = mask.clone()  # 특정 layer i 에서 'mask' 값 복사사
 
 
-            print("layer:", mtype)
-
-        elif mtype in ['upsample', 'maxpool']:
-            print("layer:", mtype)
-
-        elif mtype == 'route':
-            print("layer:", mtype)
-
-        elif mtype == 'shortcut':
-            layer_i = int(str(module_def['from'][0]))+i
-            print("from layer ", layer_i, ' layer: ', mtype)
+        elif mtype == 'shortcut': # skipped layer
+            layer_i = int(str(module_def['from'][0])) + i
+            # print('i: {} \t layer_i: {} \t mtype: {}'.format(i, layer_i, mtype))
             proned_module_defs[i]['is_access'] = False
 
-        elif mtype == 'yolo':
-            print("layer:", mtype)
+
+    # for i, module_def in enumerate(proned_module_defs):
+    #     print('{} {}'.format(i, module_def))
 
 
-    ## ??? ##
-
-    layer_number = len(proned_module_defs)  # 113
+    # Check shortcut(skip connection) related layers' mask and sum, then renew those layers' mask
+    layer_number = len(proned_module_defs)  # 125
     for i in range(layer_number-1, -1, -1): # descending order
         mtype = proned_module_defs[i]['type']
-        if mtype == 'shortcut': # 73, 71,
+        # print('i:', i, ' mtype: ', mtype)
+        if mtype == 'shortcut':
             if proned_module_defs[i]['is_access']: 
                 continue
-            Merge_masks =  []
+
+            Merge_masks = []  # reset in every layer
             layer_i = i
-            while mtype == 'shortcut':
-                proned_module_defs[layer_i]['is_access'] = True
-                if proned_module_defs[layer_i-1]['type'] == 'convolutional':  # layer = 73, 60, 35, 11, 4
+
+            # Check all shortcut related layers' mask and sum, then set 1 which has value > 0
+            while mtype == 'shortcut':  # ['is_access'] = False  --> i:
+                proned_module_defs[layer_i]['is_access'] = True  # checked
+
+                if proned_module_defs[layer_i-1]['type'] == 'convolutional':  # layer-1 = 73, 60, 35, 11, 4
                     bn = int(proned_module_defs[layer_i-1]['batch_normalize'])
                     if bn:
-                        Merge_masks.append(proned_module_defs[layer_i-1]["mask"].unsqueeze(0)) #[] --> [ [] ]
+                        Merge_masks.append(proned_module_defs[layer_i-1]["mask"].unsqueeze(0))  # [] --> [ [] ]
+                        # print('layer_i-1: {} \t Merge_masks[-1].shape {}'.format( layer_i-1, Merge_masks[-1].shape))
 
-                layer_i = int(str(proned_module_defs[layer_i]['from'][0])) + layer_i
+                layer_i = int(str(proned_module_defs[layer_i]['from'][0])) + layer_i # 62
                 mtype = proned_module_defs[layer_i]['type']
+                # print('Updated layer_i : {} \t mtype : {} '.format(layer_i, mtype))
 
                 if mtype == 'convolutional':
                     bn = int(proned_module_defs[layer_i]['batch_normalize'])
                     if bn:
                         Merge_masks.append(proned_module_defs[layer_i]["mask"].unsqueeze(0))
-
-
+                        # print('layer_i  : {} \t Merge_masks[-1].shape {}'.format(layer_i, Merge_masks[-1].shape))
 
             if len(Merge_masks) > 1:
-                Merge_masks = torch.cat(Merge_masks, 0)
-                merge_mask = (torch.sum(Merge_masks, dim=0) > 0).float().cuda()
+                # print('Merge_masks is list but inside there are 5 tensors which has Size[([1,1024)]')
+                Merge_masks = torch.cat(Merge_masks, 0)  # each tensor combined to one tensor but in different list.
+                # print('len(Merge_masks): ', len(Merge_masks))
+                merge_mask = (torch.sum(Merge_masks, dim=0) > 0).float().cuda() # If torch.sum - element is over 1 -> True --> 1
+                # print('merge_mask.shape: ', merge_mask.shape)
             else:
                 merge_mask = Merge_masks[0].float().cuda()
+                # print('No Merge masks - merge_mask: ', Merge_masks[0].float())
 
-            layer_i = i
+            layer_i = i  # First shortcut layer's i-th
             mtype = 'shortcut'
 
+            # shortcut connected layer's mask equals to merge_mask (all same) / 5, 9, 3, 2
             while mtype == 'shortcut':
-
-                if proned_module_defs[layer_i-1]['type'] == 'convolutional': 
+                if proned_module_defs[layer_i-1]['type'] == 'convolutional':
                     bn = int(proned_module_defs[layer_i-1]['batch_normalize'])
                     if bn:
                         proned_module_defs[layer_i-1]["mask"] = merge_mask
+                        print('layer_i {} \t merge_mask.shape: {} '.format(layer_i, merge_mask.shape))
 
                 layer_i = int(str(proned_module_defs[layer_i]['from'][0]))+layer_i
                 mtype = proned_module_defs[layer_i]['type']
+                print('updated layer_i: ', layer_i)
 
                 if mtype == 'convolutional': 
                     bn = int(proned_module_defs[layer_i]['batch_normalize'])
                     if bn:     
                         proned_module_defs[layer_i]["mask"] = merge_mask
-
+                        print('layer_i {} \t mtype: {} \t merge_mask.shape: {} '.format(layer_i, mtype,merge_mask.shape))
+    # Put 'mask_before' attributes to convolutional layer considering route layer
+    # Update number of output FM channel from previous layer
+    print('\nRoute_conv Start!')
     for i, (module_def, module) in enumerate(zip(model.module_defs, model.module_list)):
-        #print("layer:", i)
         mtype = module_def['type']
-        if mtype  == 'convolutional':
+        if mtype == 'convolutional':
             bn = int(module_def['batch_normalize'])
             if bn:
-                #layer_i_1 = i - 1
                 proned_module_defs[i]['mask_before'] = None
-
                 mask_before = []
-                #conv_indexs = []
                 if i > 0:
                     conv_indexs = route_conv(i, proned_module_defs)
                     for conv_index in conv_indexs:
                         mask_before += proned_module_defs[conv_index]["mask"].clone().cpu().numpy().tolist()
-                    proned_module_defs[i]['mask_before'] = torch.tensor(mask_before).float().cuda()  
-                   
-                            
+                        print('i: ', i, '\tlen(mask_before): ', len(mask_before), end='\n')
+                    proned_module_defs[i]['mask_before'] = torch.tensor(mask_before).float().cuda()  # input proned's mask
 
+
+    # Save new configuration file about pruned model
     output_cfg_path = os.path.join(save, "prune.cfg")
     write_model_cfg(cfg, output_cfg_path, proned_module_defs)
 
-    # Load cfg file of pruned model
-    # ??? #
+    # Load new cfg file of pruned model
     pruned_model = Darknet(output_cfg_path, img_size).to(device)
+
+    input()
+
+    # Copy masked before-pruned weights to after-pruned weights
     for i, (module_def, old_module, new_module) in enumerate(zip(proned_module_defs, model.module_list, pruned_model.module_list)):  
         mtype = module_def['type']
-        #print("layer: ",i, mtype)
-        if mtype  == 'convolutional': # 
+
+        if mtype == 'convolutional':
             bn = int(module_def['batch_normalize'])
             if bn:
-                new_norm = getattr(new_module, 'BatchNorm2d')# 'batch_norm_%d' % i) # batch_norm layer
-                old_norm = getattr(old_module, 'BatchNorm2d')#'batch_norm_%d' % i) # batch_norm layer
+                new_norm = getattr(new_module, 'BatchNorm2d')
+                old_norm = getattr(old_module, 'BatchNorm2d')
 
-                new_conv = getattr(new_module, 'Conv2d')#'conv_%d' % i) # conv layer
-                old_conv = getattr(old_module, 'Conv2d')#'conv_%d' % i) # conv layer
-                
+                new_conv = getattr(new_module, 'Conv2d')
+                old_conv = getattr(old_module, 'Conv2d')
 
                 idx1 = np.squeeze(np.argwhere(np.asarray(module_def['mask'].cpu().numpy())))
                 if i > 0:
                     idx2 = np.squeeze(np.argwhere(np.asarray(module_def['mask_before'].cpu().numpy())))
                     new_conv.weight.data = old_conv.weight.data[idx1.tolist()][:, idx2.tolist(), :, :].clone()
-                    
-                    print("idx1: ", len(idx1), ", idx2: ", len(idx2))
+                    print(i, '\t new: ', new_conv.weight.data.shape, '\t old: ', old_conv.weight.data.shape)
+
+
                 else:
                     new_conv.weight.data = old_conv.weight.data[idx1.tolist()].clone()
+                    print(i, '\t new: ', new_conv.weight.data.shape, '\t old: ', old_conv.weight.data.shape)
 
                 new_norm.weight.data = old_norm.weight.data[idx1.tolist()].clone()
                 new_norm.bias.data = old_norm.bias.data[idx1.tolist()].clone()
                 new_norm.running_mean = old_norm.running_mean[idx1.tolist()].clone()
                 new_norm.running_var = old_norm.running_var[idx1.tolist()].clone()
 
-                print('layer index: ', i, 'idx1: ', idx1)     
-            else: 
-
-                new_conv = getattr(new_module, 'Conv2d')#'conv_%d' % i) # batch_norm layer
-                old_conv = getattr(old_module, 'Conv2d')#'conv_%d' % i) # batch_norm layer
+            else:  # No BN after Conv2d
+                new_conv = getattr(new_module, 'Conv2d')
+                old_conv = getattr(old_module, 'Conv2d')
                 idx2 = np.squeeze(np.argwhere(np.asarray(proned_module_defs[i-1]['mask'].cpu().numpy())))
                 new_conv.weight.data = old_conv.weight.data[:,idx2.tolist(),:,:].clone()
                 new_conv.bias.data = old_conv.bias.data.clone()
-                print('layer index: ', i, "entire copy") 
+                print(i, '\t new: ', new_conv.weight.data.shape, '\t old: ', old_conv.weight.data.shape)
+                print('layer index: ', i, "entire copy")
+    input()
 
     print('--'*30)
     print('prune done!')    
-    print('pruned ratio %.3f'%overall_ratio)
+    print('pruned ratio %.3f' % overall_ratio)
     prune_weights_path = os.path.join(save, "prune.pt")    
     _pruned_state_dict = pruned_model.state_dict()
     torch.save(_pruned_state_dict, prune_weights_path)
 
     print("Done!") 
 
-
-
     # test the pruned model
     pruned_model.eval()
     img_path = "../DL-DATASET/etri-safety_system/distort/images/640x480/GH020005_006.jpg"
     
     org_img = cv2.imread(img_path)  # BGR
-    img, _, _ = letterbox(org_img, [img_size,img_size])#, mode='rect')
-
+    img, _, _ = letterbox(org_img, [img_size,img_size])
 
     # Normalize
     img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
@@ -352,7 +361,6 @@ def test(
     # Run NMS
     output = non_max_suppression(inf_out, conf_thres=0.3, iou_thres=0.5)
     # Statistics per image
-
     for si, pred in enumerate(output):
         if pred is None:
             continue
@@ -372,12 +380,11 @@ def test(
                 cv2.putText(org_img, str(category_id) + ":" + str('%.1f' % (float(confidence) * 100)) + "%", (int(left), int(top) - 8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)  
 
-        # cv2.imshow("result", org_img) --> Cannot terminate program..
+        # cv2.imshow("result", org_img)  # --> Cannot terminate program..
         # cv2.waitKey(0)
         cv2.imwrite('result_{}'.format(img_path), org_img)
 
-
-    # convert pt to weights:
+    # Convert .pt to .weights:
     print('Saving weight....')
     prune_c_weights_path = os.path.join(save, "prune.weights")
     save_weights(pruned_model, prune_c_weights_path)
@@ -399,6 +406,9 @@ if __name__ == '__main__':
     opt.save += "_{}_{}".format(opt.overall_ratio, opt.perlayer_ratio)
 
     print(opt)
+    file_opt = "opts.txt"
+
+    save_opts(opt.save, file_opt, opt)
 
     with torch.no_grad():
         test(

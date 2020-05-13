@@ -11,6 +11,10 @@ def detect(save_img=False):
     out, source, weights, half, view_img, save_txt = opt.output, opt.source, opt.weights, opt.half, opt.view_img, opt.save_txt
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
+    # Display and save arguments
+    print(opt)
+    save_opts(os.path.join(out,'options'), options=opt)
+
     # Initialize
     device = torch_utils.select_device(device='cpu' if ONNX_EXPORT else opt.device)
     # if os.path.exists(out):
@@ -64,11 +68,11 @@ def detect(save_img=False):
     # Set Dataloader
     vid_path, vid_writer = None, None
     if webcam:
-        view_img = True
+        # view_img = True Now let's not show image!
         torch.backends.cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=img_size)
     else:
-        save_img = True
+        # save_img = True  #  Now let's not save image!
         dataset = LoadImages(source, img_size=img_size)
 
     # Get names and colors
@@ -77,7 +81,12 @@ def detect(save_img=False):
 
     # Run inference
     t0 = time.time()
+    img_index = -1
+
     for path, img, im0s, vid_cap in dataset:
+        img_index += 1
+        if save_txt and img_index >= len(path):
+            break
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -86,7 +95,22 @@ def detect(save_img=False):
 
         # Inference
         t1 = torch_utils.time_synchronized()
-        pred = model(img)[0].float() if half else model(img)[0]
+        folder_det = str(Path(out))
+
+        if webcam:
+            img_name = Path(path[img_index]).name
+        else:
+            img_name = Path(path).name
+        text_name = img_name.split('.')[0] + '.txt'
+        det_path = os.path.join(folder_det, text_name)
+
+        if os.path.exists(det_path):
+            os.remove(det_path)
+
+        if save_txt:
+            pred = model(img[img_index:img_index+1,:,:,:])[0].float() if half else model(img[img_index:img_index+1,:,:,:])[0] #when create detection text file.
+        else:
+            pred = model(img[:, :, :, :])[0].float() if half else model(img[:, :, :, :])[0]
         t2 = torch_utils.time_synchronized()
 
         # Apply NMS
@@ -101,18 +125,27 @@ def detect(save_img=False):
         for i, det in enumerate(pred):  # detections per image
             if webcam:  # batch_size >= 1
                 p, s, im0 = path[i], '%g: ' % i, im0s[i]
+                if save_txt:
+                    s = '%g: ' % img_index
             else:
                 p, s, im0 = path, '', im0s
-
-            video_name = Path(p).name
-            if opt.video_name is not None:
-                video_name = opt.video_name
+            # set video_name, detection text file path
+            video_name = opt.video_name
+            if opt.video_name is None:
+                video_name = Path(p).name
             save_path = str(Path(out) / video_name)
+
             s += '%gx%g ' % img.shape[2:]  # print string
+
+            # Even though det is None, create text file
+            if det is None:
+                if save_txt:
+                    with open(det_path, 'a') as file:
+                        file.write('')
+
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-
                 # Print results
                 for c in det[:, -1].unique():
                     n = (det[:, -1] == c).sum()  # detections per class
@@ -120,9 +153,11 @@ def detect(save_img=False):
 
                 # Write results
                 for *xyxy, conf, cls in det:
+                    xywh_rel = xyxy2xywh_rel(xyxy, im0.shape)
+                    # xywh_abs = xyxy2xywh_abs(xyxy) # for check with my own eyes
                     if save_txt:  # Write to file
-                        with open(save_path + '.txt', 'a') as file:
-                            file.write(('%g ' * 6 + '\n') % (*xyxy, cls, conf))
+                        with open(det_path, 'a') as file:
+                            file.write(('%g ' * 6 + '\n') % (cls, conf, *xywh_rel))
 
                     if save_img or view_img:  # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
@@ -166,7 +201,7 @@ if __name__ == '__main__':
     parser.add_argument('--cfg', type=str, default='input/cfg/yolov3-spp.cfg', help='*.cfg path')
     parser.add_argument('--names', type=str, default='input/dataset/etri/etri.names', help='*.names path')
     parser.add_argument('--weights', type=str, default='input/weights/yolov3-spp-ultralytics.pt', help='weights path')
-    parser.add_argument('--source', type=str, default='../DL-DATASET/', help='source')  # input file/folder, 0 for webcam
+    parser.add_argument('--source', type=str, default='../DL-DATASET/etri-safety_system/distort/videos/[Distort]_ETRI_Video_640x480.avi', help='source')  # input file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='demo_output/', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.3, help='object confidence threshold')
@@ -178,9 +213,27 @@ if __name__ == '__main__':
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
-    parser.add_argument('--video_name', type=str, default='file.avi', help='output file name')
-    opt = parser.parse_args()
-    print(opt)
+    parser.add_argument('--video-name', type=str, help='output file name')
+    parser.add_argument('--copy', action='store_true', help='copy detection files in destination folder')
+    parser.add_argument('--move', action='store_true', help='move detection files in destination folder')
+    parser.add_argument('--src-dir', type=str, help='source directory of detection files for copy or move')
+    parser.add_argument('--dst-dir', type=str, help='destination directory of detection files for copy or move')
 
-    with torch.no_grad():
-        detect()
+    opt = parser.parse_args()
+
+    if opt.copy:
+        if opt.src_dir is None or opt.dst_dir is None :
+            raise Exception('Source or Destination directory is None')
+        elif not os.path.exists(opt.src_dir):
+            raise Exception('Wrong directory of source folder.')
+        copy_files(opt.src_dir, opt.dst_dir)
+    elif opt.move:
+        if opt.src_dir is None or opt.dst_dir is None:
+            raise Exception('Source or Destination directory is None')
+        elif not os.path.exists(opt.src_dir):
+            raise Exception('Wrong directory of source folder.')
+        move_files(opt.src_dir, opt.dst_dir)
+
+    else:
+        with torch.no_grad():
+            detect()

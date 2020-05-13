@@ -106,6 +106,28 @@ def weights_init_normal(m):
         torch.nn.init.normal_(m.weight.data, 1.0, 0.03)
         torch.nn.init.constant_(m.bias.data, 0.0)
 
+def xyxy2xywh_rel(x, shape=()):
+    # Transform box coordinates from [x1, y1, x2, y2] (where xy1=top-left, xy2=bottom-right) to [x/W, y/H, w/W, h/H]
+    height, width = shape[0], shape[1]
+    #print('height, width = {}, {}'.format(height, width))
+    y = torch.zeros_like(x) if isinstance(x, torch.Tensor) else np.zeros_like(x)
+    y[0] = (x[0] + x[2]) / 2 / width # x center
+    y[1] = (x[1] + x[3]) / 2 / height # y center
+    y[2] = (x[2] - x[0]) / width # width
+    y[3] = (x[3] - x[1])/ height # height
+
+    return y
+
+def xyxy2xywh_abs(x):
+    # Transform box coordinates from [x1, y1, x2, y2] (where xy1=top-left, xy2=bottom-right) to [x, y, w, h]
+    #print('height, width = {}, {}'.format(height, width))
+    y = torch.zeros_like(x) if isinstance(x, torch.Tensor) else np.zeros_like(x)
+    y[0] = (x[0] + x[2]) / 2  # x center
+    y[1] = (x[1] + x[3]) / 2  # y center
+    y[2] = (x[2] - x[0]) # width
+    y[3] = (x[3] - x[1])# height
+
+    return y
 
 def xyxy2xywh(x):
     # Transform box coordinates from [x1, y1, x2, y2] (where xy1=top-left, xy2=bottom-right) to [x, y, w, h] 
@@ -1059,3 +1081,46 @@ def plot_results(output='', start=0, stop=0, bucket='', id=()):  # from utils.ut
     fig.tight_layout()
     ax[1].legend()
     fig.savefig(output + os.sep + 'results.png', dpi=200)
+
+
+### Song's code ###
+def save_fps(save='', file_name='fps.txt', fps=0):
+    if not os.path.exists(save):
+        os.makedirs(save)
+
+    path_fps = os.path.join(save, file_name)
+
+    with open(path_fps, 'w') as f:
+        f.writelines(str(fps))
+
+
+def save_opts(save='', file_name='options.txt', options=None):
+    ''' Save initial argument setting as text file '''
+    path_opt = os.path.join(save, file_name)
+
+    if not os.path.exists(save):
+        os.makedirs(save)
+
+    with open(path_opt, 'w') as f:
+        f.writelines(str(options))
+
+def copy_files(source_dir, dest_dir):
+    print('Copying all text files...')
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+    file_ext = '/*.txt'
+    for file in glob.glob(source_dir + file_ext):
+        file_target = file.split('\\')[-1]
+        shutil.copyfile(file, dest_dir +'/'+ file_target)
+    print('Done')
+
+def move_files(source_dir, dest_dir):
+    print('Moving all text files...')
+    if not os.path.exists(dest_dir):
+        os.makedirs(dest_dir)
+    file_ext = '/*.txt'
+    for file in glob.glob(source_dir + file_ext):
+        file_target = file.split('\\')[-1]
+        shutil.copyfile(file, dest_dir + '/' + file_target)
+        os.remove(file)
+    print('Done')

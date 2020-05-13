@@ -11,7 +11,6 @@ from models import *
 from utils.datasets import *
 from utils.utils import *
 
-
 def test(opt,
          cfg,
          data,
@@ -133,7 +132,7 @@ def test(opt,
                 continue
 
             # Append to text file
-            # with open('test.txt', 'a') as file:
+            # with open('results_test.txt', 'a') as file:
             #    [file.write('%11.5g' * 7 % tuple(x) + '\n') for x in pred]
 
             # Clip boxes to image bounds
@@ -254,8 +253,9 @@ if __name__ == '__main__':
     parser.add_argument('--iou-thres', type=float, default=0.6, help='IOU threshold for NMS')
     parser.add_argument('--save-json', action='store_false', help='save a cocoapi-compatible JSON results file')
     parser.add_argument('--task', default='test', help="'test', 'study', 'benchmark'")
-    parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1) or cpu')
+    parser.add_argument('--device', default='0', help='device id (i.e. 0 or 0,1) or cpu')
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
+    parser.add_argument('--output', default='', help='save folder directory')
     opt = parser.parse_args()
     opt.save_json = opt.save_json or any([x in opt.data for x in ['coco.data', 'coco2014.data', 'coco2017.data']])
     print(opt)
@@ -264,7 +264,8 @@ if __name__ == '__main__':
     #print('TEST opt: ', opt)
     # task = 'test', 'study', 'benchmark'
     if opt.task == 'test':  # (default) test normally
-        test(opt.cfg,
+        test(opt,
+             opt.cfg,
              opt.data,
              opt.weights,
              opt.batch_size,

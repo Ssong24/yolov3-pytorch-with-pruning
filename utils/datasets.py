@@ -98,14 +98,16 @@ class LoadImages:  # for inference
                     ret_val, img0 = self.cap.read()
 
             self.frame += 1
-            print('video %g/%g (%g/%g) %s: ' % (self.count + 1, self.nF, self.frame, self.nframes, path), end='')
+            # print frame
+            # print('video %g/%g (%g/%g) %s: ' % (self.count + 1, self.nF, self.frame, self.nframes, path), end='')
 
         else:
             # Read image
             self.count += 1
             img0 = cv2.imread(path)  # BGR
             assert img0 is not None, 'Image Not Found ' + path
-            print('image %g/%g %s: ' % (self.count, self.nF, path), end='')
+            # print frame
+            # print('image %g/%g %s: ' % (self.count, self.nF, path), end='')
 
         # Padded resize
         img = letterbox(img0, new_shape=self.img_size)[0]
@@ -199,13 +201,16 @@ class LoadStreams:  # multiple IP or RTSP cameras
         if os.path.isfile(sources):
             with open(sources, 'r') as f:
                 sources = [x.strip() for x in f.read().splitlines() if len(x.strip())]
+                print('sources: ', sources)
         else:
             sources = [sources]
 
         n = len(sources)
         self.imgs = [None] * n
         self.sources = sources
+
         for i, s in enumerate(sources):
+            s = s.replace('\\', '/')
             # Start the thread to read frames from the video stream
             print('%g/%g: %s... ' % (i + 1, n, s), end='')
             cap = cv2.VideoCapture(0 if s == '0' else s)
@@ -214,9 +219,10 @@ class LoadStreams:  # multiple IP or RTSP cameras
             h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = cap.get(cv2.CAP_PROP_FPS) % 100
             _, self.imgs[i] = cap.read()  # guarantee first frame
-            thread = Thread(target=self.update, args=([i, cap]), daemon=True)
             print(' success (%gx%g at %.2f FPS).' % (w, h, fps))
-            thread.start()
+            # thread = Thread(target=self.update, args=([i, cap]), daemon=True)
+            # thread.start()
+
         print('')  # newline
 
         # check for common shapes
@@ -290,8 +296,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Define labels
         self.label_files = [x.replace('images\\640x480', 'labels/yolo').replace(os.path.splitext(x)[-1], '.txt')
                             for x in self.img_files]
-        for x in self.img_files:
-            print('label path: ', x.replace('images\\640x480', 'labels\\yolo').replace(os.path.splitext(x)[-1], '.txt'))
+        # for x in self.img_files:
+        #     print('label path: ', x.replace('images\\640x480', 'labels\\yolo').replace(os.path.splitext(x)[-1], '.txt'))
 
         # Rectangular Training  https://github.com/ultralytics/yolov3/issues/232
         if self.rect:
@@ -446,7 +452,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
             # Load labels
             labels = []
-            #print('datasets.py: label_path: ', label_path)
+
             if os.path.isfile(label_path):
                 x = self.labels[index]
                 if x is None:  # labels not preloaded

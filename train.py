@@ -12,29 +12,29 @@ import test  # import test.py to get mAP after each epoch
 from models import *
 from utils.datasets import *
 from utils.utils import *
+from utils.radam import *  # Song's modified code
 
 from sparsity import updateBN
 
 mixed_precision = True
 try:  # Mixed precision training https://github.com/NVIDIA/apex
-    from apex import amp # Now is working
+    from apex import amp
 except:
     mixed_precision = False  # not installed
 
-# wdir = opt.output + os.sep  # weights dir os.sep = '\\'
-# last = wdir + 'last.pt'
-# best = wdir + 'best.pt'
-# results_file = 'results.txt'
+
+
+
 
 # Hyperparameters (results68: 59.9 mAP@0.5 yolov3-spp-416) https://github.com/ultralytics/yolov3/issues/310
 
-hyp = {'giou': 3.54,  # giou loss gain
-       'cls': 37.4,  # cls loss gain
+hyp = {'giou': 1.77, # 3.54,  # giou loss gain
+       'cls': 18.7,# 37.4,  # cls loss gain
        'cls_pw': 1.0,  # cls BCELoss positive_weight
        'obj': 64.3,  # obj loss gain (*=img_size/320 if img_size != 320)
        'obj_pw': 1.0,  # obj BCELoss positive_weight
        'iou_t': 0.225,  # iou training threshold
-       'lr0': 0.01,  # initial learning rate (SGD=5E-3, Adam=5E-4)
+       'lr0': 0.001, # 0.01,  # initial learning rate (SGD=5E-3, Adam=5E-4)
        'lrf': -4.,  # final LambdaLR learning rate = lr0 * (10 ** lrf)
        'momentum': 0.937,  # SGD momentum
        'weight_decay': 0.000484,  # optimizer weight decay
@@ -45,7 +45,8 @@ hyp = {'giou': 3.54,  # giou loss gain
        'degrees': 1.98 * 0,  # image rotation (+/- deg)
        'translate': 0.05 * 0,  # image translation (+/- fraction)
        'scale': 0.05 * 0,  # image scale (+/- gain)
-       'shear': 0.641 * 0}  # image shear (+/- deg)
+       'shear': 0.641 * 0  # image shear (+/- deg)
+       }
 
 # Overwrite hyp with hyp*.txt (optional)
 f = glob.glob('hyp*.txt')
@@ -85,8 +86,6 @@ def train():
     train_path = data_dict['train']
     test_path = data_dict['valid']
     nc = 1 if opt.single_cls else int(data_dict['classes'])  # number of classes
-    #print('data_dict keys?', data_dict.keys())
-
 
     # Remove previous results
     for f in glob.glob('*_batch*.png') + glob.glob(results_file):
@@ -109,6 +108,7 @@ def train():
         # hyp['lr0'] *= 0.1  # reduce lr (i.e. SGD=5E-3, Adam=5E-4)
         optimizer = optim.Adam(pg0, lr=hyp['lr0'])
         # optimizer = AdaBound(pg0, lr=hyp['lr0'], final_lr=0.1)
+        # optimizer = RAdam(pg0, lr=hyp['lr0'])
     else:
         optimizer = optim.SGD(pg0, lr=hyp['lr0'], momentum=hyp['momentum'], nesterov=True)
     optimizer.add_param_group({'params': pg1, 'weight_decay': hyp['weight_decay']})  # add pg1 with weight_decay
@@ -154,21 +154,31 @@ def train():
     if mixed_precision:
         model, optimizer = amp.initialize(model, optimizer, opt_level='O1', verbosity=0)
 
-    # Scheduler https://github.com/ultralytics/yolov3/issues/238
-    lf = lambda x: (1 + math.cos(x * math.pi / epochs)) / 2  # cosine https://arxiv.org/pdf/1812.01187.pdf
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf, last_epoch=start_epoch - 1)
-    # scheduler = lr_scheduler.MultiStepLR(optimizer, [round(epochs * x) for x in [0.8, 0.9]], 0.1, start_epoch - 1)
+    # Scheduler https://arxiv.org/pdf/1812.01187.pdf
+    # lf = lambda x: (1 + math.cos(x * math.pi / epochs)) / 2  # cosine https://arxiv.org/pdf/1812.01187.pdf
+    # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+    # scheduler.last_epoch = start_epoch - 1
+
+    # For RAdam optimizer, is it okay for scheduler
+    # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_steps) # num_steps = batch_size * epochs
+
+    ###### Modified lr when resume ######
+    lf = lambda x: (((1 + math.cos(x * math.pi / epochs)) / 2) ** 1.0) * 0.95 + 0.05  # cosine
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # This also has warm-up stage of lr
+    scheduler.last_epoch = start_epoch - 1
+    # https://discuss.pytorch.org/t/a-problem-occured-when-resuming-an-optimizer/28822
+    ######################################
 
     # Plot lr schedule
-    # y = []
-    # for _ in range(epochs):
-    #     scheduler.step()
-    #     y.append(optimizer.param_groups[0]['lr'])
-    # plt.plot(y, '.-', label='LambdaLR')
-    # plt.xlabel('epoch')
-    # plt.ylabel('LR')
-    # plt.tight_layout()
-    # plt.savefig('LR.png', dpi=300)
+    y = []
+    for _ in range(epochs):
+        scheduler.step()
+        y.append(optimizer.param_groups[0]['lr'])
+    plt.plot(y, '.-', label='LambdaLR')
+    plt.xlabel('epoch')
+    plt.ylabel('LR')
+    plt.tight_layout()
+    plt.savefig('LR.png', dpi=300)
 
     # Initialize distributed training
     if device.type != 'cpu' and torch.cuda.device_count() > 1 and torch.distributed.is_available():
@@ -365,7 +375,7 @@ def train():
         if not os.path.exists(backup_folder):
             os.makedirs(backup_folder)
         backup_path = os.path.join(backup_folder, 'backup%g.pt' % epoch)
-        if epoch % 10 == 0 and epoch > 250:
+        if epoch % 10 == 0:
             with open(results_file, 'r') as f:
                 # Create checkpoint
                 chkpt = {'epoch': epoch,
@@ -429,7 +439,7 @@ def train():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int, default=300)  # 500200 batches at bs 16, 117263 COCO images = 273 epochs
+    parser.add_argument('--epochs', type=int, default=700)  # 500200 batches at bs 16, 117263 COCO images = 273 epochs
     parser.add_argument('--batch-size', type=int, default=16)  # effective bs = batch_size * accumulate = 16 * 4 = 64
     parser.add_argument('--accumulate', type=int, default=4, help='batches to accumulate before optimizing')
     parser.add_argument('--cfg', type=str, default='input/cfg/yolov3-spp.cfg', help='*.cfg path')
@@ -534,4 +544,4 @@ if __name__ == '__main__':
             print_mutation(hyp, results, opt.bucket)
 
             # Plot results
-            #plot_evolution_results(hyp)
+            # plot_evolution_results(hyp)
