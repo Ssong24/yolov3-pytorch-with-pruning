@@ -37,12 +37,11 @@ def detect():
     dataset = LoadImages(source, img_size=img_size)
 
     # Run inference
-    t0 = time.time()
     processed_time = 0
+    t0 = time.time()
+
     for d_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
-        if d_idx >= fr_limit:
-            processed_time = time.time() - t0
-            break
+
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -73,8 +72,17 @@ def detect():
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
 
+        if d_idx == fr_limit - 1:
+            processed_time = time.time() - t0
+            break
+
     print('Done. (%.3fs)' % processed_time)
-    save_fps(save_folder,fps=fr_limit / processed_time )
+    print('%.2f FPS in %d frames' % (fr_limit/processed_time, fr_limit))
+    if half:
+        file_name = 'fps_half.txt'
+    else:
+        file_name = 'fps.txt'
+    save_fps(save_folder,fps=fr_limit / processed_time , file_name=file_name)
 
 
 if __name__ == '__main__':

@@ -22,10 +22,6 @@ try:  # Mixed precision training https://github.com/NVIDIA/apex
 except:
     mixed_precision = False  # not installed
 
-
-
-
-
 # Hyperparameters (results68: 59.9 mAP@0.5 yolov3-spp-416) https://github.com/ultralytics/yolov3/issues/310
 
 hyp = {'giou': 1.77, # 3.54,  # giou loss gain
@@ -71,7 +67,6 @@ def train():
     last = wdir + 'last.pt'
     best = wdir + 'best.pt'
     results_file = wdir + 'results.txt'
-
 
     # Initialize
     init_seeds()
@@ -158,7 +153,6 @@ def train():
     # lf = lambda x: (1 + math.cos(x * math.pi / epochs)) / 2  # cosine https://arxiv.org/pdf/1812.01187.pdf
     # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
     # scheduler.last_epoch = start_epoch - 1
-
     # For RAdam optimizer, is it okay for scheduler
     # scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_steps) # num_steps = batch_size * epochs
 
@@ -168,17 +162,6 @@ def train():
     scheduler.last_epoch = start_epoch - 1
     # https://discuss.pytorch.org/t/a-problem-occured-when-resuming-an-optimizer/28822
     ######################################
-
-    # Plot lr schedule
-    y = []
-    for _ in range(epochs):
-        scheduler.step()
-        y.append(optimizer.param_groups[0]['lr'])
-    plt.plot(y, '.-', label='LambdaLR')
-    plt.xlabel('epoch')
-    plt.ylabel('LR')
-    plt.tight_layout()
-    plt.savefig('LR.png', dpi=300)
 
     # Initialize distributed training
     if device.type != 'cpu' and torch.cuda.device_count() > 1 and torch.distributed.is_available():
@@ -224,8 +207,6 @@ def train():
     model.gr = 0.0  # giou loss ratio (obj_loss = 1.0 or giou)
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device)  # attach class weights
 
-    # Model EMA
-    # ema = torch_utils.ModelEMA(model, decay=0.9998)
 
     # Start training
     nb = len(dataloader)  # number of batches
@@ -413,7 +394,7 @@ def train():
             del chkpt
 
         # end epoch ----------------------------------------------------------------------------------------------------
-    tb_writer.close()
+    # tb_writer.close()
     # end training
 
     n = opt.name
@@ -462,15 +443,13 @@ if __name__ == '__main__':
     parser.add_argument('--s', type=float, default=0.0001, help='scale for sparsity training')
     parser.add_argument('--output', type=str, default='results', help='model result folder')  # output folder
     opt = parser.parse_args()
-    #opt.weights = last if opt.resume else opt.weights
-    print(opt)
+    # opt.weights = last if opt.resume else opt.weights
 
     # Save 'opt' configurations.
     file_opt = 'opts.txt'
     path_opt = os.path.join(opt.output, file_opt)
     if not os.path.exists(opt.output):
         os.makedirs(opt.output)
-
     with open(path_opt, 'w') as f_opt:
         f_opt.writelines(str(opt))
 
@@ -484,13 +463,12 @@ if __name__ == '__main__':
     # Visualize the result by tensorboard
     tb_writer = None
     if not opt.evolve:  # Train normally
-        try:
-            # Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/
-            from torch.utils.tensorboard import SummaryWriter
-            tb_writer = SummaryWriter()
-        except:
-            pass
-
+        # try:
+        #     # Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/
+        #     from torch.utils.tensorboard import SummaryWriter
+        #     tb_writer = SummaryWriter()
+        # except:
+        #     pass
         train()  # train normally
 
     else:  # Evolve hyperparameters (optional)

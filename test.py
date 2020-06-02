@@ -211,29 +211,29 @@ def test(opt,
         t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (img_size, img_size, batch_size)  # tuple
         print('Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g' % t)
 
-    # Save JSON
-    if save_json and map and len(jdict):
-        print('\nCOCO mAP with pycocotools...')
-        imgIds = [int(Path(x).stem.split('_')[-1]) for x in dataloader.dataset.img_files]
-        with open('results.json', 'w') as file:
-            json.dump(jdict, file)
-
-        try:
-            from pycocotools.coco import COCO
-            from pycocotools.cocoeval import COCOeval
-        except:
-            print('WARNING: missing pycocotools package, can not compute official COCO mAP. See requirements.txt.')
-
-        # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
-        cocoGt = COCO(glob.glob('../coco/annotations/instances_val*.json')[0])  # initialize COCO ground truth api
-        cocoDt = cocoGt.loadRes('results.json')  # initialize COCO pred api
-
-        cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
-        cocoEval.params.imgIds = imgIds  # [:32]  # only evaluate these images
-        cocoEval.evaluate()
-        cocoEval.accumulate()
-        cocoEval.summarize()
-        mf1, map = cocoEval.stats[:2]  # update to pycocotools results (mAP@0.5:0.95, mAP@0.5)
+    # # Save JSON
+    # if save_json and map and len(jdict):
+    #     print('\nCOCO mAP with pycocotools...')
+    #     imgIds = [int(Path(x).stem.split('_')[-1]) for x in dataloader.dataset.img_files]
+    #     with open('results.json', 'w') as file:
+    #         json.dump(jdict, file)
+    #
+    #     try:
+    #         from pycocotools.coco import COCO
+    #         from pycocotools.cocoeval import COCOeval
+    #     except:
+    #         print('WARNING: missing pycocotools package, can not compute official COCO mAP. See requirements.txt.')
+    #
+    #     # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
+    #     cocoGt = COCO(glob.glob('../coco/annotations/instances_val*.json')[0])  # initialize COCO ground truth api
+    #     cocoDt = cocoGt.loadRes('results.json')  # initialize COCO pred api
+    #
+    #     cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
+    #     cocoEval.params.imgIds = imgIds  # [:32]  # only evaluate these images
+    #     cocoEval.evaluate()
+    #     cocoEval.accumulate()
+    #     cocoEval.summarize()
+    #     mf1, map = cocoEval.stats[:2]  # update to pycocotools results (mAP@0.5:0.95, mAP@0.5)
 
     # Return results
     maps = np.zeros(nc) + map

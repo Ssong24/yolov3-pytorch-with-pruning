@@ -72,18 +72,18 @@ def labels_to_image_weights(labels, nc=80, class_weights=np.ones(80)):
     return image_weights
 
 
-def coco_class_weights():  # frequency of each class in coco train2014
-    n = [187437, 4955, 30920, 6033, 3838, 4332, 3160, 7051, 7677, 9167, 1316, 1372, 833, 6757, 7355, 3302, 3776, 4671,
-         6769, 5706, 3908, 903, 3686, 3596, 6200, 7920, 8779, 4505, 4272, 1862, 4698, 1962, 4403, 6659, 2402, 2689,
-         4012, 4175, 3411, 17048, 5637, 14553, 3923, 5539, 4289, 10084, 7018, 4314, 3099, 4638, 4939, 5543, 2038, 4004,
-         5053, 4578, 27292, 4113, 5931, 2905, 11174, 2873, 4036, 3415, 1517, 4122, 1980, 4464, 1190, 2302, 156, 3933,
-         1877, 17630, 4337, 4624, 1075, 3468, 135, 1380]
-    weights = 1 / torch.Tensor(n)
-    weights /= weights.sum()
-    # with open('data/coco.names', 'r') as f:
-    #     for k, v in zip(f.read().splitlines(), n):
-    #         print('%20s: %g' % (k, v))
-    return weights
+# def coco_class_weights():  # frequency of each class in coco train2014
+#     n = [187437, 4955, 30920, 6033, 3838, 4332, 3160, 7051, 7677, 9167, 1316, 1372, 833, 6757, 7355, 3302, 3776, 4671,
+#          6769, 5706, 3908, 903, 3686, 3596, 6200, 7920, 8779, 4505, 4272, 1862, 4698, 1962, 4403, 6659, 2402, 2689,
+#          4012, 4175, 3411, 17048, 5637, 14553, 3923, 5539, 4289, 10084, 7018, 4314, 3099, 4638, 4939, 5543, 2038, 4004,
+#          5053, 4578, 27292, 4113, 5931, 2905, 11174, 2873, 4036, 3415, 1517, 4122, 1980, 4464, 1190, 2302, 156, 3933,
+#          1877, 17630, 4337, 4624, 1075, 3468, 135, 1380]
+#     weights = 1 / torch.Tensor(n)
+#     weights /= weights.sum()
+#     # with open('data/coco.names', 'r') as f:
+#     #     for k, v in zip(f.read().splitlines(), n):
+#     #         print('%20s: %g' % (k, v))
+#     return weights
 
 
 def coco80_to_coco91_class():  # converts 80-index (val2014) to 91-index (paper)
@@ -147,27 +147,6 @@ def xywh2xyxy(x):
     y[:, 2] = x[:, 0] + x[:, 2] / 2  # bottom right x
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
     return y
-
-
-# def xywh2xyxy(box):
-#     # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2]
-#     if isinstance(box, torch.Tensor):
-#         x, y, w, h = box.t()
-#         return torch.stack((x - w / 2, y - h / 2, x + w / 2, y + h / 2)).t()
-#     else:  # numpy
-#         x, y, w, h = box.T
-#         return np.stack((x - w / 2, y - h / 2, x + w / 2, y + h / 2)).T
-#
-#
-# def xyxy2xywh(box):
-#     # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h]
-#     if isinstance(box, torch.Tensor):
-#         x1, y1, x2, y2 = box.t()
-#         return torch.stack(((x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1)).t()
-#     else:  # numpy
-#         x1, y1, x2, y2 = box.T
-#         return np.stack(((x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1)).T
-
 
 def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
     # Rescale coords (xyxy) from img1_shape to img0_shape

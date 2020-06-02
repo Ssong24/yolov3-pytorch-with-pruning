@@ -5,9 +5,8 @@ from utils.utils import *
 
 model = Darknet('input/cfg/yolov3-spp.cfg', (416, 416))
 weights = sys.argv[1]
-print('weights: ', weights)
-dev = '1'
-device = torch_utils.select_device()
+dev = '0' # GPU
+device = torch_utils.select_device(dev)
 model.load_state_dict(torch.load(weights, map_location=device)['model'])
 
 

@@ -1,1 +1,0 @@
-"C:\ProgramData\Anaconda3\envs\CornerNet_Lite\python.exe" "C:\path\to\clone\yolov3-pytorch\train.py" --data .\input\dataset\etri\etri_undistort_crop_0.33_.data  --cfg .\input\cfg\yolov3-spp3.cfg --weights .\input\pretrained_weights\darknet53.conv.74 --batch-size 16 --accumulate 16 --output .\results\etri_undistort\initial_training\crop_0.33_spp3\ --epochs 1001

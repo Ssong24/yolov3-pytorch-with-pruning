@@ -200,9 +200,9 @@ def test(
             proned_module_defs[i]['is_access'] = False
 
 
-    # for i, module_def in enumerate(proned_module_defs):
-    #     print('{} {}'.format(i, module_def))
-
+    for i, module_def in enumerate(proned_module_defs):
+        print('{} {}'.format(i, module_def))
+    input()
 
     # Check shortcut(skip connection) related layers' mask and sum, then renew those layers' mask
     layer_number = len(proned_module_defs)  # 125
@@ -291,8 +291,6 @@ def test(
     # Load new cfg file of pruned model
     pruned_model = Darknet(output_cfg_path, img_size).to(device)
 
-    input()
-
     # Copy masked before-pruned weights to after-pruned weights
     for i, (module_def, old_module, new_module) in enumerate(zip(proned_module_defs, model.module_list, pruned_model.module_list)):  
         mtype = module_def['type']
@@ -330,7 +328,6 @@ def test(
                 new_conv.bias.data = old_conv.bias.data.clone()
                 print(i, '\t new: ', new_conv.weight.data.shape, '\t old: ', old_conv.weight.data.shape)
                 print('layer index: ', i, "entire copy")
-    input()
 
     print('--'*30)
     print('prune done!')    
@@ -338,7 +335,6 @@ def test(
     prune_weights_path = os.path.join(save, "prune.pt")    
     _pruned_state_dict = pruned_model.state_dict()
     torch.save(_pruned_state_dict, prune_weights_path)
-
     print("Done!") 
 
     # test the pruned model

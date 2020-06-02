@@ -1,0 +1,1 @@
+Namespace(cfg='.\\input\\cfg\\yolov3-spp3.cfg', img_size=416, overall_ratio=0.85, perlayer_ratio=0.1, save='.\\results\\etri_distort\\prune\\crop_0.33_spp3\\prune_0.85_0.1\\_0.85_0.1', weights='.\\results\\etri_distort\\initial_training\\crop_0.33_spp3\\original\\best.pt')

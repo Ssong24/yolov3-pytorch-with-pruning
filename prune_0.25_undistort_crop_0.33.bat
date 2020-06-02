@@ -1,1 +1,0 @@
-"C:\ProgramData\Anaconda3\envs\CornerNet_Lite\python.exe" "C:\path\to\clone\yolov3-pytorch\prune.py" --cfg .\input\cfg\yolov3-spp3.cfg --weights .\results\etri_undistort\initial_training\crop_0.33_spp3\best.pt --overall_ratio 0.25 --perlayer_ratio 0.1 --save .\results\etri_undistort\prune\crop_0.33_spp3\prune

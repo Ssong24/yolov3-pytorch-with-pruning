@@ -442,9 +442,11 @@ def convert(cfg='cfg/yolov3-spp.cfg', weights='weights/yolov3-spp.weights'):
 
     # Load weights and save
     if weights.endswith('.pt'):  # if PyTorch format
+        weights_prefix = weights.split('.pt')[0]
+        weights_path = weights_prefix + '.weights'
         model.load_state_dict(torch.load(weights, map_location='cpu')['model'])
-        save_weights(model, path='converted.weights', cutoff=-1)
-        print("Success: converted '%s' to 'converted.weights'" % weights)
+        save_weights(model, path=weights_path, cutoff=-1)
+        print("Success: converted '%s' to '%s.weights'" % (weights, weights_path))
 
     elif weights.endswith('.weights'):  # darknet format
         _ = load_darknet_weights(model, weights)
@@ -466,28 +468,28 @@ def attempt_download(weights):
     # Attempt to download pretrained weights if not found locally
     msg = weights + ' missing, try downloading from https://drive.google.com/open?id=1LezFG5g3BCW6iYaV89B2i64cqEUZD7e0'
 
-    if weights and not os.path.isfile(weights):
-        d = {'yolov3-spp.weights': '16lYS4bcIdM2HdmyJBVDOvt3Trx6N3W2R',
-             'yolov3.weights': '1uTlyDWlnaqXcsKOktP5aH_zRDbfcDp-y',
-             'yolov3-tiny.weights': '1CCF-iNIIkYesIDzaPvdwlcf7H9zSsKZQ',
-             'yolov3-spp.pt': '1f6Ovy3BSq2wYq4UfvFUpxJFNDFfrIDcR',
-             'yolov3.pt': '1SHNFyoe5Ni8DajDNEqgB2oVKBb_NoEad',
-             'yolov3-tiny.pt': '10m_3MlpQwRtZetQxtksm9jqHrPTHZ6vo',
-             'darknet53.conv.74': '1WUVBid-XuoUBmvzBVUCBl_ELrzqwA8dJ',
-             'yolov3-tiny.conv.15': '1Bw0kCpplxUqyRYAJr9RY9SGnOJbo9nEj',
-             'ultralytics49.pt': '158g62Vs14E3aj7oPVPuEnNZMKFNgGyNq',
-             'ultralytics68.pt': '1Jm8kqnMdMGUUxGo8zMFZMJ0eaPwLkxSG',
-             'yolov3-spp-ultralytics.pt': '1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4'}
-
-        file = Path(weights).name
-        if file in d:
-            r = gdrive_download(id=d[file], name=weights)
-        else:  # download from pjreddie.com
-            url = 'https://pjreddie.com/media/files/' + file
-            print('Downloading ' + url)
-            r = os.system('curl -f ' + url + ' -o ' + weights)
-
-        # Error check
-        if not (r == 0 and os.path.exists(weights) and os.path.getsize(weights) > 1E6):  # weights exist and > 1MB
-            os.system('rm ' + weights)  # remove partial downloads
-            raise Exception(msg)
+    # if weights and not os.path.isfile(weights):
+    #     d = {'yolov3-spp.weights': '16lYS4bcIdM2HdmyJBVDOvt3Trx6N3W2R',
+    #          'yolov3.weights': '1uTlyDWlnaqXcsKOktP5aH_zRDbfcDp-y',
+    #          'yolov3-tiny.weights': '1CCF-iNIIkYesIDzaPvdwlcf7H9zSsKZQ',
+    #          'yolov3-spp.pt': '1f6Ovy3BSq2wYq4UfvFUpxJFNDFfrIDcR',
+    #          'yolov3.pt': '1SHNFyoe5Ni8DajDNEqgB2oVKBb_NoEad',
+    #          'yolov3-tiny.pt': '10m_3MlpQwRtZetQxtksm9jqHrPTHZ6vo',
+    #          'darknet53.conv.74': '1WUVBid-XuoUBmvzBVUCBl_ELrzqwA8dJ',
+    #          'yolov3-tiny.conv.15': '1Bw0kCpplxUqyRYAJr9RY9SGnOJbo9nEj',
+    #          'ultralytics49.pt': '158g62Vs14E3aj7oPVPuEnNZMKFNgGyNq',
+    #          'ultralytics68.pt': '1Jm8kqnMdMGUUxGo8zMFZMJ0eaPwLkxSG',
+    #          'yolov3-spp-ultralytics.pt': '1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4'}
+    #
+    #     file = Path(weights).name
+    #     if file in d:
+    #         r = gdrive_download(id=d[file], name=weights)
+    #     else:  # download from pjreddie.com
+    #         url = 'https://pjreddie.com/media/files/' + file
+    #         print('Downloading ' + url)
+    #         r = os.system('curl -f ' + url + ' -o ' + weights)
+    #
+    #     # Error check
+    #     if not (r == 0 and os.path.exists(weights) and os.path.getsize(weights) > 1E6):  # weights exist and > 1MB
+    #         os.system('rm ' + weights)  # remove partial downloads
+    #         raise Exception(msg)
