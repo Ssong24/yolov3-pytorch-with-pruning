@@ -16,6 +16,11 @@ def create_modules(module_defs, img_size):
     # Constructs module list of layer blocks from module configuration in module_defs
 
     hyperparams = module_defs.pop(0)
+    # hyperparams:
+    # {'type': 'net', 'batch': 64, 'subdivisions': 16, 'width': 640, 'height': 480, 'channels': 3, 'momentum': '0.9',
+    #  'decay': '0.0005', 'angle': 0, 'saturation': '1.5', 'exposure': '1.5', 'hue': '.1', 'learning_rate': '0.001',
+    #  'burn_in': 1000, 'max_batches': 10000, 'policy': 'steps', 'steps': '8000,9000', 'scales': '.1,.1'}
+
     output_filters = [int(hyperparams['channels'])]
     module_list = nn.ModuleList()
     routs = []  # list of layers which rout to deeper layers
@@ -253,7 +258,6 @@ class YOLOLayer(nn.Module):
 
 class Darknet(nn.Module):
     # YOLOv3 object detection model
-
     def __init__(self, cfg, img_size=(416, 416)):
         super(Darknet, self).__init__()
         self.module_defs = parse_model_cfg(cfg)
