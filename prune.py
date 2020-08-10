@@ -149,7 +149,7 @@ def test(
     for m in model.modules():
         if isinstance(m, nn.BatchNorm2d):  # Total, 72 BatchNorm2d layers
             total += m.weight.data.shape[0]  # channels numbers
-    bn = torch.zeros(total) # 총 BN layer의 channel 갯수만큼 tensor with zero value
+    bn = torch.zeros(total)  # 총 BN layer의 channel 갯수만큼 tensor with zero value
     index = 0
 
     for m in model.modules():
@@ -174,8 +174,6 @@ def test(
         mtype = module_def['type']
         if mtype == 'convolutional':
             bn = int(module_def['batch_normalize'])
-
-            # print("i: {} \t mtype: {}".format(i, mtype))
             if bn:  # if 'batch_normalize: 1' --> What is the meaning of 1: there is BN after Conv layer.
                 m = getattr(module, 'BatchNorm2d')
                 weight_copy = m.weight.data.abs().clone()  # copy torch.size([channel num])

@@ -5,10 +5,95 @@ from models import *  # set ONNX_EXPORT in models.py
 from utils.datasets import *
 from utils.utils import *
 
+color_list = np.array(
+        [
+            1.000, 1.000, 1.000,
+            0.850, 0.325, 0.098,
+            0.929, 0.694, 0.125,
+            0.494, 0.184, 0.556,
+            0.466, 0.674, 0.188,
+            0.301, 0.745, 0.933,
+            0.635, 0.078, 0.184,
+            0.300, 0.300, 0.300,
+            0.600, 0.600, 0.600,
+            1.000, 0.000, 0.000,
+            1.000, 0.500, 0.000,
+            0.749, 0.749, 0.000,
+            0.000, 1.000, 0.000,
+            0.000, 0.000, 1.000,
+            0.667, 0.000, 1.000,
+            0.333, 0.333, 0.000,
+            0.333, 0.667, 0.000,
+            0.333, 1.000, 0.000,
+            0.667, 0.333, 0.000,
+            0.667, 0.667, 0.000,
+            0.667, 1.000, 0.000,
+            1.000, 0.333, 0.000,
+            1.000, 0.667, 0.000,
+            1.000, 1.000, 0.000,
+            0.000, 0.333, 0.500,
+            0.000, 0.667, 0.500,
+            0.000, 1.000, 0.500,
+            0.333, 0.000, 0.500,
+            0.333, 0.333, 0.500,
+            0.333, 0.667, 0.500,
+            0.333, 1.000, 0.500,
+            0.667, 0.000, 0.500,
+            0.667, 0.333, 0.500,
+            0.667, 0.667, 0.500,
+            0.667, 1.000, 0.500,
+            1.000, 0.000, 0.500,
+            1.000, 0.333, 0.500,
+            1.000, 0.667, 0.500,
+            1.000, 1.000, 0.500,
+            0.000, 0.333, 1.000,
+            0.000, 0.667, 1.000,
+            0.000, 1.000, 1.000,
+            0.333, 0.000, 1.000,
+            0.333, 0.333, 1.000,
+            0.333, 0.667, 1.000,
+            0.333, 1.000, 1.000,
+            0.667, 0.000, 1.000,
+            0.667, 0.333, 1.000,
+            0.667, 0.667, 1.000,
+            0.667, 1.000, 1.000,
+            1.000, 0.000, 1.000,
+            1.000, 0.333, 1.000,
+            1.000, 0.667, 1.000,
+            0.167, 0.000, 0.000,
+            0.333, 0.000, 0.000,
+            0.500, 0.000, 0.000,
+            0.667, 0.000, 0.000,
+            0.833, 0.000, 0.000,
+            1.000, 0.000, 0.000,
+            0.000, 0.167, 0.000,
+            0.000, 0.333, 0.000,
+            0.000, 0.500, 0.000,
+            0.000, 0.667, 0.000,
+            0.000, 0.833, 0.000,
+            0.000, 1.000, 0.000,
+            0.000, 0.000, 0.167,
+            0.000, 0.000, 0.333,
+            0.000, 0.000, 0.500,
+            0.000, 0.000, 0.667,
+            0.000, 0.000, 0.833,
+            0.000, 0.000, 1.000,
+            0.000, 0.000, 0.000,
+            0.143, 0.143, 0.143,
+            0.286, 0.286, 0.286,
+            0.429, 0.429, 0.429,
+            0.571, 0.571, 0.571,
+            0.714, 0.714, 0.714,
+            0.857, 0.857, 0.857,
+            0.000, 0.447, 0.741,
+            0.50, 0.5, 0
+        ]
+    ).astype(np.float32)
+color_list = color_list.reshape((-1, 3)) * 255
 
 def detect(save_img=False):
     img_size = (320, 192) if ONNX_EXPORT else opt.img_size  # (320, 192) or (416, 256) or (608, 352) for (height, width)
-    out, source, weights, half, view_img, save_txt = opt.output, opt.source, opt.weights, opt.half, opt.view_img, opt.save_txt
+    out, source, weights, half, view_img, save_txt, save_img = opt.output, opt.source, opt.weights, opt.half, opt.view_img, opt.save_txt, opt.save_img
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # Display and save arguments
@@ -78,7 +163,8 @@ def detect(save_img=False):
     # Get names and colors
     names = load_classes(opt.names)
     # crimson, cornflower, gold, silver, cyan
-    colors = [[220,20,60], [100,149,237], [255, 215, 0], [192,192,192], [0,205,205]]#[[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
+    colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
+    # [[220,20,60], [100,149,237], [255, 215, 0], [192,192,192], [0,205,205]]#
 
     # Run inference
     t0 = time.time()
@@ -212,6 +298,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1) or cpu')
     parser.add_argument('--view-img', action='store_true', help='display results')
     parser.add_argument('--save-txt', action='store_true', help='save results to *.txt')
+    parser.add_argument('--save-img', action='store_true', help='save video ')
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--video-name', type=str, help='output file name')

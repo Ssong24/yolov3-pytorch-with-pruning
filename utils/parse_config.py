@@ -18,14 +18,14 @@ def parse_model_cfg(path):
     for line in lines:
         if line.startswith('['):  # This marks the start of a new block
             mdefs.append({})
-            mdefs[-1]['type'] = line[1:-1].rstrip()
+            mdefs[-1]['type'] = line[1:-1].rstrip()  # rstrip(): remove last character here.
             if mdefs[-1]['type'] == 'convolutional':
                 mdefs[-1]['batch_normalize'] = 0  # pre-populate with zeros (may be overwritten later)
         else:
             key, val = line.split("=")
             key = key.rstrip()
             if key == 'anchors':  # return nparray
-                mdefs[-1][key] = np.array([int(x) for x in val.split(',')]).reshape((-1, 2)) #np.array([int(x) for x in val.split(',')]).reshape((-1, 2))  # np anchors
+                mdefs[-1][key] = np.array([int(x) for x in val.split(',')]).reshape((-1, 2)) # shape of array (1 x n) --> (n/2 x 2)
             elif key in ['from', 'layers', 'mask']:  # return array
                 mdefs[-1][key] = [int(x) for x in val.split(',')]
             else:
