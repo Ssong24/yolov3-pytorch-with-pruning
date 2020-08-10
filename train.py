@@ -118,18 +118,35 @@ def train():
         chkpt = torch.load(weights, map_location=device)
 
         # change chkpt['model'] size to new number of classes
-        det_layers = ['module_list.88.', 'module_list.106.', 'module_list.124.']
+        n_detlayers = [88,106, 124]
         for i, (k,v) in enumerate(chkpt['model'].items()):
-            print('k: {}, v.shape: {}'.format(k, v.shape)) # module_list.88.Conv2d.weight - [30,112,1,1]
-            if k.find('module_list.88.') != -1:
-                a1 = model.module_list[88][0]
-                chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
-            elif k.find('module_list.106.') != -1:
-                a1 = model.module_list[106][0]
-                chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
-            elif k.find('module_list.124.') != -1:
-                a1 = model.module_list[124][0]
-                chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
+            #print('k: {}, v.shape: {}'.format(k, v.shape)) # module_list.88.Conv2d.weight - [30,112,1,1]
+            idx = int(k.split('.')[1])
+            isWeight = k.split('.')[3].find('weight')
+            if idx in n_detlayers:
+                a = model.module_list[idx][0]
+                if isWeight == 0: # It has string 'weight'
+                    chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a.weight))
+                else:
+                    chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a.bias))
+
+
+
+
+            # if k.find('module_list.88.') != -1:
+            #     print(k)
+            #     print( chkpt['model'][k].shape)
+            #     a1 = model.module_list[88][0]
+            #     chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
+            #     print('After ', chkpt['model'][k].shape)
+            # elif k.find('module_list.106.') != -1:
+            #     a1 = model.module_list[106][0]
+            #     chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
+            #     print('After ', chkpt['model'][k].shape)
+            # elif k.find('module_list.124.') != -1:
+            #     a1 = model.module_list[124][0]
+            #     chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
+            #     print('After ', chkpt['model'][k].shape)
         input()
         # print(model)
         # Later delete!
