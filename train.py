@@ -117,6 +117,58 @@ def train():
         # possible weights are '*.pt', 'yolov3-spp.pt', 'yolov3-tiny.pt' etc.
         chkpt = torch.load(weights, map_location=device)
 
+        # change chkpt['model'] size to new number of classes
+        det_layers = ['module_list.88.', 'module_list.106.', 'module_list.124.']
+        for i, (k,v) in enumerate(chkpt['model'].items()):
+            print('k: {}, v.shape: {}'.format(k, v.shape)) # module_list.88.Conv2d.weight - [30,112,1,1]
+            if k.find('module_list.88.') != -1:
+                a1 = model.module_list[88][0]
+                chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
+            elif k.find('module_list.106.') != -1:
+                a1 = model.module_list[106][0]
+                chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
+            elif k.find('module_list.124.') != -1:
+                a1 = model.module_list[124][0]
+                chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
+        input()
+        # print(model)
+        # Later delete!
+        # a1 = model.module_list[88][0]
+        # a2 = model.module_list[106][0]
+        # a3 = model.module_list[124][0]
+        # a1.weight = torch.nn.Parameter(torch.ones_like(a1.weight))
+        # a2.weight = torch.nn.Parameter(torch.ones_like(a2.weight))
+        # a3.weight = torch.nn.Parameter(torch.ones_like(a3.weight))
+
+        # freeze all layers' param except detection layers
+        for i, m in enumerate(model.module_list):
+            if i != 88 or i != 105 or i != 124: # detection layer's index --> how to automatically set??
+                model.freeze(i)
+
+        # Change optimizer's size to new number of classes # chkpt['optimizer'].keys() # ['state', 'param_groups']
+        songs_classes = 13
+        songs_filters = (songs_classes+5)*3
+        etri_classes = 5
+        etri_filters = (etri_classes+5)*3
+        for state in chkpt['optimizer']['state'].values():
+            for k, v in state.items():
+                list_v_size = list(v.size())
+                if list_v_size == [etri_filters] :#or list(v.size()[0]) == [30]: # and (v.size() == torch.Size[([30])] or v.size()[0] == 30) :
+                    print('list(v.size()) == [30] --> k: {} v: {}'.format(k, v.size()))
+                    a = torch.cat([v.clone(), torch.zeros((songs_filters-etri_filters))], 0)
+                    state[k] = a.clone()
+
+                elif list_v_size[0] == etri_filters:
+                    print('list(v.size())[0] == 30 --> k: {} v: {}'.format(k, v.size()))
+                    a = torch.cat([v.clone(), torch.zeros((songs_filters-etri_filters, list_v_size[1], list_v_size[2], list_v_size[3]))])
+                    state[k] = a.clone()
+
+
+        for state in chkpt['optimizer']['state'].values():
+            for k, v in state.items():
+                print('v.shape: ', v.shape)
+        input()
+
         # load model
         try:
             print('[Loading model...]')
@@ -130,7 +182,7 @@ def train():
         # load optimizer
         if chkpt['optimizer'] is not None:
             print('[Loading optimizer...]')
-            optimizer.load_state_dict(chkpt['optimizer'])
+            optimizer.load_state_dict(chkpt['optimizer'])  # tensor size of layer 88,106, 124 should be changed 30(class=5) to 54(class=13)
             best_fitness = chkpt['best_fitness']
 
         # load results
@@ -170,6 +222,7 @@ def train():
                                 world_size=1,  # number of nodes for distributed training
                                 rank=0)  # distributed training node rank
         model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
+
         model.yolo_layers = model.module.yolo_layers  # move yolo layer indices to top level
 
     # Dataset
