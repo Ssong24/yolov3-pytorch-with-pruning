@@ -1,9 +1,16 @@
+---- [ train.py ] ----
+Task
+ - Set img size for training and inference, num of epochs, batch size, accumulate(?), weights
+ - Set the path for trained model weights
+ - Initialize : init_seeds
+ - parse configuration file and set dataset path, num of classes
+ - Initialize model: Darknet(cfg).to(device)
 ---- [ models.py ] ----
 Func
  - create_modules(module_defs, img_size)
  - get_yolo_layers(model)
  - create_grids(self, img_size, ng, device, type)
- - load_darknet_weighs(self,weights, cutoff)
+ - load_darknet_weights(self,weights, cutoff)
  - save_weights(self, path, cutoff)
  - convert(cfg, weights)
  - attempt_download(weights)
