@@ -294,10 +294,22 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.mosaic = self.augment and not self.rect  # load 4 images at a time into a mosaic (only during training)
 
         # Define labels
-        self.label_files = [x.replace('images\\640x480', 'labels/yolo').replace(os.path.splitext(x)[-1], '.txt')
+        img_folder = ""
+        etri_img_folder = "image\\640x480"
+        cityscape_img_folder = "images"
+        if self.img_files[0].find(etri_img_folder) > 0:
+            img_folder = etri_img_folder
+
+        elif self.img_files[0].find(cityscape_img_folder) > 0:
+            img_folder = cityscape_img_folder
+        else:
+            print("Wrong image folder name. Please rewrite!")
+            exit(-1)
+
+        self.label_files = [x.replace(img_folder, 'labels\yolo').replace(os.path.splitext(x)[-1], '.txt')
                             for x in self.img_files]
-        # for x in self.img_files:
-        #     print('label path: ', x.replace('images\\640x480', 'labels\\yolo').replace(os.path.splitext(x)[-1], '.txt'))
+        if img_folder == cityscape_img_folder:
+            self.label_files = [x.replace("leftImg8bit","gtFine_polygons") for x in self.label_files]
 
         # Rectangular Training  https://github.com/ultralytics/yolov3/issues/232
         if self.rect:
@@ -317,6 +329,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             i = ar.argsort()
             self.img_files = [self.img_files[i] for i in i]
             self.label_files = [self.label_files[i] for i in i]
+            #('self.label_files: ', self.label_files)
             self.shapes = s[i]  # wh
             ar = ar[i]
 
@@ -342,17 +355,19 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             pbar = tqdm(self.label_files, desc='Caching labels')
             nm, nf, ne, ns, nd = 0, 0, 0, 0, 0  # number missing, found, empty, datasubset, duplicate
             for i, file in enumerate(pbar):
+
                 try:
                     with open(file, 'r') as f:
                         l = np.array([x.split() for x in f.read().splitlines()], dtype=np.float32)
                 except:
                     nm += 1
-                    #print('missing labels for image %s' % self.img_files[i])  # file missing
+                    print('missing label %s' % self.label_files[i])  # file missing
                     continue
 
                 if l.shape[0]:
                     assert l.shape[1] == 5, '> 5 label columns: %s' % file
                     assert (l >= 0).all(), 'negative labels: %s' % file
+
                     assert (l[:, 1:] <= 1).all(), 'non-normalized or out of bounds coordinate labels: %s' % file
                     if np.unique(l, axis=0).shape[0] < l.shape[0]:  # duplicate rows
                         nd += 1  # print('WARNING: duplicate rows in %s' % self.label_files[i])  # duplicate rows
