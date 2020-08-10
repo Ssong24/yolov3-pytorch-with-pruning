@@ -16,6 +16,8 @@ def create_modules(module_defs, img_size):
     # Constructs module list of layer blocks from module configuration in module_defs
 
     hyperparams = module_defs.pop(0)
+    # print('hyperparams: ', hyperparams)
+    # input()
     # hyperparams:
     # {'type': 'net', 'batch': 64, 'subdivisions': 16, 'width': 640, 'height': 480, 'channels': 3, 'momentum': '0.9',
     #  'decay': '0.0005', 'angle': 0, 'saturation': '1.5', 'exposure': '1.5', 'hue': '.1', 'learning_rate': '0.001',
@@ -336,6 +338,10 @@ class Darknet(nn.Module):
 
     def info(self, verbose=False):
         torch_utils.model_info(self, verbose)
+
+    def freeze(self, index):
+        for param in self.module_list[index].parameters():
+            param.requires_grad = False
 
 
 def get_yolo_layers(model):
