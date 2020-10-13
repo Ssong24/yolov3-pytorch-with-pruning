@@ -1,1 +1,0 @@
-Namespace(cfg='.\\input\\cfg\\yolov3-spp3.cfg', img_size=416, overall_ratio=0.5, perlayer_ratio=0.1, save='.\\results\\etri_undistort\\prune\\all_spp3_0.5_0.1', weights='.\\results\\etri_undistort\\all_spp3\\weights\\backup650.pt')
