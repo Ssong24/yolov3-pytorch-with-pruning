@@ -1,2 +1,0 @@
-..\DL-DATASET\etri-safety_system\distort\images\640x480\GH020005_002.jpg
-..\DL-DATASET\etri-safety_system\distort\images\640x480\GH020005_003.jpg
