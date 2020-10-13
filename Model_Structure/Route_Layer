@@ -1,0 +1,21 @@
+out[-2].shape: torch.Size([32, 512, 13, 13])
+
+out[-4].shape: torch.Size([32, 512, 13, 13])
+
+out[-1].shape: torch.Size([32, 512, 13, 13])
+out[-3].shape: torch.Size([32, 512, 13, 13])
+out[-5].shape: torch.Size([32, 512, 13, 13])
+out[-6].shape: torch.Size([32, 512, 13, 13])
+x.shape:  torch.Size([32, 2048, 13, 13])
+
+out[-4].shape: torch.Size([32, 512, 13, 13])
+
+out[-1].shape: torch.Size([32, 256, 26, 26])
+out[61].shape: torch.Size([32, 512, 26, 26])
+x.shape:  torch.Size([32, 768, 26, 26])
+
+out[-4].shape: torch.Size([32, 256, 26, 26])
+
+out[-1].shape: torch.Size([32, 128, 52, 52])
+out[36].shape: torch.Size([32, 256, 52, 52])
+x.shape:  torch.Size([32, 384, 52, 52])

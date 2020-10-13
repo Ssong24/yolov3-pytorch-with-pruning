@@ -1,0 +1,8 @@
+mtype: maxpool. input.size: torch.Size([32, 512, 13, 13])
+output.size:  torch.Size([32, 512, 13, 13])
+
+mtype: maxpool. input.size: torch.Size([32, 512, 13, 13])
+output.size:  torch.Size([32, 512, 13, 13])
+
+mtype: maxpool. input.size: torch.Size([32, 512, 13, 13])
+output.size:  torch.Size([32, 512, 13, 13])

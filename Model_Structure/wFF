@@ -1,0 +1,27 @@
+Total number of weightedFeatureFusion() = 23
+4 x.shape: torch.Size([64, 64, 208, 208]) a.shape: torch.Size([64, 64, 208, 208]) nc: 64 ac: 64 dc: 0
+8 x.shape: torch.Size([64, 128, 104, 104]) a.shape: torch.Size([64, 128, 104, 104]) nc: 128 ac: 128 dc: 0
+11 x.shape: torch.Size([64, 128, 104, 104]) a.shape: torch.Size([64, 128, 104, 104]) nc: 128 ac: 128 dc: 0
+15x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+18 x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+21 x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+24 x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+27 x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+30 x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+33 x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+36 x.shape: torch.Size([64, 256, 52, 52]) a.shape: torch.Size([64, 256, 52, 52]) nc: 256 ac: 256 dc: 0
+40 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+43 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+46 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+49 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+52 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+55 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+58 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+61 x.shape: torch.Size([64, 512, 26, 26]) a.shape: torch.Size([64, 512, 26, 26]) nc: 512 ac: 512 dc: 0
+65 x.shape: torch.Size([64, 1024, 13, 13]) a.shape: torch.Size([64, 1024, 13, 13]) nc: 1024 ac: 1024 dc: 0
+68 x.shape: torch.Size([64, 1024, 13, 13]) a.shape: torch.Size([64, 1024, 13, 13]) nc: 1024 ac: 1024 dc: 0
+71 x.shape: torch.Size([64, 1024, 13, 13]) a.shape: torch.Size([64, 1024, 13, 13]) nc: 1024 ac: 1024 dc: 0
+74 x.shape: torch.Size([64, 1024, 13, 13]) a.shape: torch.Size([64, 1024, 13, 13]) nc: 1024 ac: 1024 dc: 0
+
+
+input x : [batch_size, #(input Channels), #(img_Size H or W), #(img_Size W or H) ]
