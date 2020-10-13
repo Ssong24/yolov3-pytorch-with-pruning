@@ -192,6 +192,7 @@ def ap_per_class(tp, conf, pred_cls, target_cls):
     # Create Precision-Recall curve and compute AP for each class
     pr_score = 0.1  # score to evaluate P and R https://github.com/ultralytics/yolov3/issues/898
     s = [len(unique_classes), tp.shape[1]]  # number class, number iou thresholds (i.e. 10 for mAP0.5...0.95)
+
     ap, p, r = np.zeros(s), np.zeros(s), np.zeros(s)
     for ci, c in enumerate(unique_classes):
         i = pred_cls == c
@@ -212,7 +213,6 @@ def ap_per_class(tp, conf, pred_cls, target_cls):
             # Precision
             precision = tpc / (tpc + fpc)  # precision curve
             p[ci] = np.interp(-pr_score, -conf[i], precision[:, 0])  # p at pr_score
-
             # AP from recall-precision curve
             for j in range(tp.shape[1]):
                 ap[ci, j] = compute_ap(recall[:, j], precision[:, j])
@@ -400,12 +400,17 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     # Compute losses
     np, ng = 0, 0  # number grid points, targets
     for i, pi in enumerate(p):  # layer index, layer predictions
+        print('layer_index: {}, pred.shape: {}'.format(i, pi.shape))
+        print('pred type: ', type(pi))
         b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
+        print('image {}, anchor {}, gridy {}, gridx {}'.format(b, a, gj, gi))
         tobj = torch.zeros_like(pi[..., 0])  # target obj
-        np += tobj.numel()
+        # print('tobj: ', tobj)
+        # print('tobj.shape: ', tobj.shape) # [0] is batch size
+        np += tobj.numel() # return length of input tensor (ex. tensor 4x6 -> output: 24)
 
         # Compute losses
-        nb = len(b)
+        nb = len(b)  # number of images
         if nb:  # number of targets
             ng += nb
             ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
@@ -447,7 +452,6 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 
 def build_targets(model, targets):
     # targets = [image, class, x, y, w, h]
-
     nt = len(targets)
     tcls, tbox, indices, av = [], [], [], []
     multi_gpu = type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
@@ -457,6 +461,7 @@ def build_targets(model, targets):
         if multi_gpu:
             ng, anchor_vec = model.module.module_list[i].ng, model.module.module_list[i].anchor_vec
         else:
+            print('Single GPU')
             ng, anchor_vec = model.module_list[i].ng, model.module_list[i].anchor_vec
 
         # iou of targets-anchors
