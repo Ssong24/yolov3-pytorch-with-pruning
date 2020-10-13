@@ -12,7 +12,7 @@ def parse_model_cfg(path):
 
     with open(path, 'r') as f:
         lines = f.read().split('\n')
-    lines = [x for x in lines if x and not x.startswith('#')]
+    lines = [x for x in lines if x and not x.startswith('#')] # Except '#'starting word, read all contents from cfg
     lines = [x.rstrip().lstrip() for x in lines]  # get rid of fringe whitespaces
     mdefs = []  # module definitions
     for line in lines:
@@ -44,6 +44,10 @@ def parse_model_cfg(path):
     f = []  # fields
     for x in mdefs[1:]:
         [f.append(k) for k in x if k not in f]
+
+    # f:
+    # ['type', 'batch_normalize', 'filters', 'size', 'stride', 'pad', 'activation', 'from', 'layers', 'mask', 'anchors',
+    #  'classes', 'num', 'jitter', 'ignore_thresh', 'truth_thresh', 'random']
     u = [x for x in f if x not in supported]  # unsupported fields
     assert not any(u), "Unsupported fields %s in %s. See https://github.com/ultralytics/yolov3/issues/631" % (u, path)
 
@@ -64,6 +68,12 @@ def parse_data_cfg(path):
         if line == '' or line.startswith('#'):
             continue
         key, val = line.split('=')
+        # line: classes = 11
+        # line: train = input / dataset / cityscape / cityscape_train.txt
+        # line: valid = input / dataset / cityscape / cityscape_val.txt
+        # line: names = input / dataset / cityscape / cityscape.names
+        # line: backup = results / backup / cityscape /
+
         options[key.strip()] = val.strip()
 
     return options
