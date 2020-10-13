@@ -296,7 +296,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Define labels
         img_folder = ""
         etri_img_folder = "image\\640x480"
-        cityscape_img_folder = "images"
+        cityscape_img_folder = "leftImg8bit_FE"
         if self.img_files[0].find(etri_img_folder) > 0:
             img_folder = etri_img_folder
 
@@ -306,7 +306,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             print("Wrong image folder name. Please rewrite!")
             exit(-1)
 
-        self.label_files = [x.replace(img_folder, 'labels\yolo').replace(os.path.splitext(x)[-1], '.txt')
+        self.label_files = [x.replace(img_folder+'\\', 'gtFine_FE\\').replace(os.path.splitext(x)[-1], '.txt')
                             for x in self.img_files]
         if img_folder == cityscape_img_folder:
             self.label_files = [x.replace("leftImg8bit","gtFine_polygons") for x in self.label_files]
@@ -355,7 +355,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             pbar = tqdm(self.label_files, desc='Caching labels')
             nm, nf, ne, ns, nd = 0, 0, 0, 0, 0  # number missing, found, empty, datasubset, duplicate
             for i, file in enumerate(pbar):
-
                 try:
                     with open(file, 'r') as f:
                         l = np.array([x.split() for x in f.read().splitlines()], dtype=np.float32)
@@ -370,7 +369,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
                     assert (l[:, 1:] <= 1).all(), 'non-normalized or out of bounds coordinate labels: %s' % file
                     if np.unique(l, axis=0).shape[0] < l.shape[0]:  # duplicate rows
-                        nd += 1  # print('WARNING: duplicate rows in %s' % self.label_files[i])  # duplicate rows
+                        nd += 1
+                        # print('WARNING: duplicate rows in %s' % self.label_files[i])  # duplicate rows
                     if single_cls:
                         l[:, 0] = 0  # force dataset into single-class mode
                     self.labels[i] = l
@@ -436,12 +436,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
     def __len__(self):
         return len(self.img_files)
-
-    # def __iter__(self):
-    #     self.count = -1
-    #     print('ran dataset iter')
-    #     #self.shuffled_vector = np.random.permutation(self.nF) if self.augment else np.arange(self.nF)
-    #     return self
 
     def __getitem__(self, index):
         if self.image_weights:
