@@ -17,7 +17,11 @@ def create_modules(module_defs, img_size):
 
     hyperparams = module_defs.pop(0)
     # print('hyperparams: ', hyperparams)
-    # input()
+    # {'type': 'net', 'batch': 64, 'subdivisions': 16, 'width': 640, 'height': 320, 'channels': 3,
+    # 'momentum': '0.9', 'decay': '0.0005', 'angle': 0, 'saturation': '1.5', 'exposure': '1.5',
+    # 'hue': '.1', 'learning_rate': '0.001', 'burn_in': 1000, 'max_batches': 22000, 'policy':
+    # 'steps', 'steps': '17600, 19800', 'scales': '.1,.1'}
+
     # hyperparams:
     # {'type': 'net', 'batch': 64, 'subdivisions': 16, 'width': 640, 'height': 480, 'channels': 3, 'momentum': '0.9',
     #  'decay': '0.0005', 'angle': 0, 'saturation': '1.5', 'exposure': '1.5', 'hue': '.1', 'learning_rate': '0.001',
@@ -90,11 +94,14 @@ def create_modules(module_defs, img_size):
         elif mdef['type'] == 'yolo':
             yolo_index += 1
             l = mdef['from'] if 'from' in mdef else []
-            modules = YOLOLayer(anchors=mdef['anchors'][mdef['mask']],  # anchor list
+            # print("mdef=yolo: mdef[anchors][mdef['mask']]: ", mdef['anchors'][mdef['mask']])
+            # print('nc, yolo_index, layers: | {} | {} | {}'.format(mdef['classes'], yolo_index, l))
+
+            modules = YOLOLayer(anchors=mdef['anchors'][mdef['mask']],  # anchor list - len() = 3
                                 nc=mdef['classes'],  # number of classes
                                 img_size=img_size,  # (416, 416)
                                 yolo_index=yolo_index,  # 0, 1, 2...
-                                layers=l)  # output layers
+                                layers=l)  # output layers []
 
             # Initialize preceding Conv2d() bias (https://arxiv.org/pdf/1708.02002.pdf section 3.3)
             try:
@@ -104,9 +111,10 @@ def create_modules(module_defs, img_size):
                 j = l[yolo_index] if 'from' in mdef else -1
                 bias_ = module_list[j][0].bias  # shape(255,)
                 bias = bias_[:modules.no * modules.na].view(modules.na, -1)  # shape(3,85)
-                bias[:, 4] += bo - bias[:, 4].mean()  # obj
+                bias[:, 4] += bo - bias[:, 4].mean()  # obj - objectness score(=confidence): how well the detector identifies the locations and classes of objects during navigation
                 bias[:, 5:] += bc - bias[:, 5:].mean()  # cls, view with utils.print_model_biases(model)
-                module_list[j][0].bias = torch.nn.Parameter(bias_, requires_grad=bias_.requires_grad)
+                module_list[j][0].bias = torch.nn.Parameter(bias_, requires_grad=bias_.requires_grad) # shape(255)
+
             except:
                 print('WARNING: smart bias initialization failure.')
 
@@ -120,6 +128,7 @@ def create_modules(module_defs, img_size):
     routs_binary = [False] * (i + 1)
     for i in routs:
         routs_binary[i] = True
+
     return module_list, routs_binary
 
 
@@ -129,18 +138,21 @@ class weightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
         self.layers = layers  # layer indices
         self.weight = weight  # apply weights boolean
         self.n = len(layers) + 1  # number of layers
+
         if weight:
             self.w = torch.nn.Parameter(torch.zeros(self.n))  # layer weights
 
     def forward(self, x, outputs):
+
         # Weights
         if self.weight:
             w = torch.sigmoid(self.w) * (2 / self.n)  # sigmoid weights (0-1)
             x = x * w[0]
 
+
         # Fusion
         nc = x.shape[1]  # input channels
-        for i in range(self.n - 1):
+        for i in range(self.n - 1):  # if n=2, i is only one time as zero index
             a = outputs[self.layers[i]] * w[i + 1] if self.weight else outputs[self.layers[i]]  # feature to add
             ac = a.shape[1]  # feature channels
             dc = nc - ac  # delta channels
@@ -152,6 +164,8 @@ class weightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
                 x = x + a[:, :nc]
             else:  # same shape
                 x = x + a
+
+
         return x
 
 
@@ -202,6 +216,8 @@ class YOLOLayer(nn.Module):
             create_grids(self, img_size, (nx, ny))
 
     def forward(self, p, img_size, out):
+        # print('\nYOLOLayer p.shape, img_size, nl, nc, na, no: {}, {}, {}, {}, {}, {}'.format(p.shape, img_size, self.nl, self.nc, self.na, self.no))
+        # [bs, 255, 13, 13] | [416, 416] |    0, 80, 3,  85
         ASFF = False  # https://arxiv.org/abs/1911.09516
         if ASFF:
             i, n = self.index, self.nl  # index in layers, number of layers
@@ -226,12 +242,14 @@ class YOLOLayer(nn.Module):
             bs = 1  # batch size
         else:
             bs, _, ny, nx = p.shape  # bs, 255, 13, 13
+            # print('self.nx, self.ny: {}, {}'.format(self.nx, self.ny))
+            # print('nx, ny: {}, {}'.format(nx, ny))
             if (self.nx, self.ny) != (nx, ny):
                 create_grids(self, img_size, (nx, ny), p.device, p.dtype)
 
-        # p.view(bs, 255, 13, 13) -- > (bs, 3, 13, 13, 85)  # (bs, anchors, grid, grid, classes + xywh)
+        # p.view(bs, 255, 13, 13) -- > (bs, 3, 13, 13, 85)  # (bs, anchors, grid, grid, #(classes) + xywh + conf)
         p = p.view(bs, self.na, self.no, self.ny, self.nx).permute(0, 1, 3, 4, 2).contiguous()  # prediction
-
+        print('index: {} p.shape: {}'.format(self.index, p.shape))
         if self.training:
             return p
 
@@ -273,10 +291,12 @@ class Darknet(nn.Module):
 
     def forward(self, x, verbose=False):
         img_size = x.shape[-2:]
+        # print('img_size: ', img_size)
         yolo_out, out = [], []
+        # verbose = True
         if verbose:
             str = ''
-            print('0', x.shape)
+            # print('0', x.shape)
 
         for i, (mdef, module) in enumerate(zip(self.module_defs, self.module_list)):
             mtype = mdef['type']
@@ -295,27 +315,41 @@ class Darknet(nn.Module):
                     s = [list(x.shape)] + [list(out[i].shape) for i in layers]  # shapes
                     str = ' >> ' + ' + '.join(['layer %g %s' % x for x in zip(l, s)])
                 if len(layers) == 1:
+                    # print('route. len(layers) ==1')
                     x = out[layers[0]]
+
                 else:
                     try:
+                        # print('len(layers)!= 1, torch.cat')
                         x = torch.cat([out[i] for i in layers], 1)
                     except:  # apply stride 2 for darknet reorg layer
                         out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
                         x = torch.cat([out[i] for i in layers], 1)
-                    # print(''), [print(out[i].shape) for i in layers], print(x.shape)
+                # print('route {} - x.shape: {} \n'.format(i, x.shape))
+
+
+
             elif mtype == 'yolo':
-                yolo_out.append(module(x, img_size, out))
+                print('shape of yolo output: ', (module(x, img_size, out).shape))
+                yolo_out.append(module(x, img_size, out))  # append( idx = 89, 101, 113 YOLO's output )
+
             out.append(x if self.routs[i] else [])
+
             if verbose:
                 print('%g/%g %s -' % (i, len(self.module_list), mtype), list(x.shape), str)
                 str = ''
 
         if self.training:  # train
-            return yolo_out
+            # len(yolo_out) = 3, yolo_out[0].shape = [32, 3, 13, 13, 85]
+            #                                      => [bs, anchors, grid, grid, num_classes + xywh + conf ]
+            #                                  mask = 0, 1, 2, 3, 4, 5, 6, 7, 8 --> total = 9 = len(yolo_out) * anchors
+
+            return yolo_out  # Only return 'yolo_out' from three YOLOLayers (idx=89, 101, 113)
         elif ONNX_EXPORT:  # export
             x = [torch.cat(x, 0) for x in zip(*yolo_out)]
             return x[0], torch.cat(x[1:3], 1)  # scores, boxes: 3780x80, 3780x4
         else:  # test
+            # zip(*yolo_out)에서 나오는 결과는 training 때랑 어떻게 다름?
             io, p = zip(*yolo_out)  # inference output, training output
             return torch.cat(io, 1), p
 
@@ -352,16 +386,44 @@ def get_yolo_layers(model):
 def create_grids(self, img_size=416, ng=(13, 13), device='cpu', type=torch.float32):
     nx, ny = ng  # x and y grid size
     self.img_size = max(img_size)
-    self.stride = self.img_size / max(ng)
+    self.stride = self.img_size / max(ng)  # 32 -> 16 -> 8
 
     # build xy offsets
     yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
+    # yv:
+    # tensor([[ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+    #         [ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
+    #         [ 2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2],
+    #         [ 3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3],
+    #         [ 4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4],
+    #         [ 5,  5,  5,  5,  5,  5,  5,  5,  5,  5,  5,  5,  5],
+    #         [ 6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6],
+    #         [ 7,  7,  7,  7,  7,  7,  7,  7,  7,  7,  7,  7,  7],
+    #         [ 8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8],
+    #         [ 9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9],
+    #         [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+    #         [11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11],
+    #         [12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]])
+    # xv:
+    # tensor([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12],
+    #         [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12]])
     self.grid_xy = torch.stack((xv, yv), 2).to(device).type(type).view((1, 1, ny, nx, 2))
 
     # build wh gains
     self.anchor_vec = self.anchors.to(device) / self.stride
-    self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2).type(type)
-    self.ng = torch.Tensor(ng).to(device)
+    self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2).type(type)  # same value as anchor_vec, but different shape: [1, 3, 1, 1, 2]
+    self.ng = torch.Tensor(ng).to(device)  # [13.0, 13.0] -- [26.0, 26.0] -- [52.0, 52.0]
     self.nx = nx
     self.ny = ny
 

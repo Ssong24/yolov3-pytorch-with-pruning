@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
+import argparse  # user argument
 
 import torch.distributed as dist
 import torch.optim as optim
@@ -12,9 +12,8 @@ import test  # import test.py to get mAP after each epoch
 from models import *
 from utils.datasets import *
 from utils.utils import *
-from utils.radam import *  # Song's modified code
-
-from sparsity import updateBN
+from utils.radam import *      # Song's modified code
+from sparsity import updateBN  # Channel Pruning
 
 mixed_precision = True
 try:  # Mixed precision training https://github.com/NVIDIA/apex
@@ -22,15 +21,16 @@ try:  # Mixed precision training https://github.com/NVIDIA/apex
 except:
     mixed_precision = False  # not installed
 
-# Hyperparameters (results68: 59.9 mAP@0.5 yolov3-spp-416) https://github.com/ultralytics/yolov3/issues/310
+# Hyperparameters (results68: 59.9 mAP@0.5 yolov3-spp-416)
+# https://github.com/ultralytics/yolov3/issues/310
 
 hyp = {'giou': 1.77, # 3.54,  # giou loss gain
-       'cls': 18.7,# 37.4,  # cls loss gain
+       'cls': 18.7, # 37.4,  # cls loss gain
        'cls_pw': 1.0,  # cls BCELoss positive_weight
        'obj': 64.3,  # obj loss gain (*=img_size/320 if img_size != 320)
        'obj_pw': 1.0,  # obj BCELoss positive_weight
        'iou_t': 0.225,  # iou training threshold
-       'lr0': 0.001, # 0.01,  # initial learning rate (SGD=5E-3, Adam=5E-4)
+       'lr0':  0.0005, #0.001, # 0.01,  # initial learning rate (SGD=5E-3, Adam=5E-4)
        'lrf': -4.,  # final LambdaLR learning rate = lr0 * (10 ** lrf)
        'momentum': 0.937,  # SGD momentum
        'weight_decay': 0.000484,  # optimizer weight decay
@@ -38,10 +38,10 @@ hyp = {'giou': 1.77, # 3.54,  # giou loss gain
        'hsv_h': 0.0138,  # image HSV-Hue augmentation (fraction)
        'hsv_s': 0.678,  # image HSV-Saturation augmentation (fraction)
        'hsv_v': 0.36,  # image HSV-Value augmentation (fraction)
-       'degrees': 1.98 * 0,  # image rotation (+/- deg)
-       'translate': 0.05 * 0,  # image translation (+/- fraction)
-       'scale': 0.05 * 0,  # image scale (+/- gain)
-       'shear': 0.641 * 0  # image shear (+/- deg)
+       'degrees': 1.98 , #* 0,  # image rotation (+/- deg)
+       'translate': 0.05,# * 0,  # image translation (+/- fraction)
+       'scale': 0.05, # * 0,  # image scale (+/- gain)
+       'shear': 0.641, #* 0  # image shear (+/- deg)
        }
 
 # Overwrite hyp with hyp*.txt (optional)
@@ -51,11 +51,9 @@ if f:
     for k, v in zip(hyp.keys(), np.loadtxt(f[0])):
         hyp[k] = v
 
-
 def train():
     cfg = opt.cfg
     data = opt.data
-
     img_size, img_size_test = opt.img_size if len(opt.img_size) == 2 else opt.img_size * 2  # train, test sizes
     epochs = opt.epochs  # 500200 batches at bs 64, 117263 images = 273 epochs
     batch_size = opt.batch_size
@@ -78,6 +76,9 @@ def train():
 
     # Configure run
     data_dict = parse_data_cfg(data)
+    # check .data's num of classes and n-classes
+    assert int(data_dict['classes']) == opt.n_classes, "Different number of classes btw .data and opt.n_classes"
+
     train_path = data_dict['train']
     test_path = data_dict['valid']
     nc = 1 if opt.single_cls else int(data_dict['classes'])  # number of classes
@@ -103,12 +104,28 @@ def train():
         # hyp['lr0'] *= 0.1  # reduce lr (i.e. SGD=5E-3, Adam=5E-4)
         optimizer = optim.Adam(pg0, lr=hyp['lr0'])
         # optimizer = AdaBound(pg0, lr=hyp['lr0'], final_lr=0.1)
-        # optimizer = RAdam(pg0, lr=hyp['lr0'])
     else:
         optimizer = optim.SGD(pg0, lr=hyp['lr0'], momentum=hyp['momentum'], nesterov=True)
     optimizer.add_param_group({'params': pg1, 'weight_decay': hyp['weight_decay']})  # add pg1 with weight_decay
     optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
     del pg0, pg1, pg2
+
+
+    songs_classes = opt.n_classes #
+    if songs_classes == 0:
+        print("Please set the number of classes in your dataset. Bye~")
+        exit(-1)
+    etri_classes = 0
+    if opt.resume_etri:
+        songs_filters = (songs_classes + 5) * 3
+        etri_classes = 5
+        etri_filters = (etri_classes + 5) * 3
+
+        n_detlayers = [88, 106, 124]  # detection layer's index --> how to automatically set??
+        a = model.module_list[n_detlayers[0]][0]
+        a_weight_size0 = a.weight.size()[0] # dirty way to check n-classes is correct
+        assert a_weight_size0 == songs_filters, "Number of classes doesn't fit. Please check again"
+
 
     start_epoch = 0
     best_fitness = 0.0
@@ -116,75 +133,50 @@ def train():
     if weights.endswith('.pt'):  # pytorch format
         # possible weights are '*.pt', 'yolov3-spp.pt', 'yolov3-tiny.pt' etc.
         chkpt = torch.load(weights, map_location=device)
+        if songs_classes != etri_classes and opt.resume_etri:
+            # change chkpt['model'] size to new number of classes
 
-        # change chkpt['model'] size to new number of classes
-        n_detlayers = [88,106, 124]
-        for i, (k,v) in enumerate(chkpt['model'].items()):
-            #print('k: {}, v.shape: {}'.format(k, v.shape)) # module_list.88.Conv2d.weight - [30,112,1,1]
-            idx = int(k.split('.')[1])
-            isWeight = k.split('.')[3].find('weight')
-            if idx in n_detlayers:
-                a = model.module_list[idx][0]
-                if isWeight == 0: # It has string 'weight'
-                    chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a.weight))
-                else:
-                    chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a.bias))
+            for i, (k,v) in enumerate(chkpt['model'].items()):
+                # print('k: {}, v.shape: {}'.format(k, v.shape)) # module_list.88.Conv2d.weight - [30,112,1,1]
+                idx = int(k.split('.')[1])
+                isWeight = k.split('.')[3].find('weight')
+                if idx in n_detlayers:
+                    a = model.module_list[idx][0]
+                    if isWeight == 0:  # It has string 'weight'
+                        torch.nn.init.xavier_uniform_(a.weight)
+                        chkpt['model'][k] = torch.nn.Parameter(a.weight)
+                        # print(chkpt['model'][k])
+                        # print("chkpt['model'][k]",chkpt['model'][k].shape)
+                        # input()
+                    else:
+                        # print('BN chkpt: ', chkpt['model'][k])
+                        a.bias.data.fill_(-0.01)
+                        chkpt['model'][k] = torch.nn.Parameter(a.bias)
+                        # print(chkpt['model'][k])
 
-
-
-
-            # if k.find('module_list.88.') != -1:
-            #     print(k)
-            #     print( chkpt['model'][k].shape)
-            #     a1 = model.module_list[88][0]
-            #     chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
-            #     print('After ', chkpt['model'][k].shape)
-            # elif k.find('module_list.106.') != -1:
-            #     a1 = model.module_list[106][0]
-            #     chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
-            #     print('After ', chkpt['model'][k].shape)
-            # elif k.find('module_list.124.') != -1:
-            #     a1 = model.module_list[124][0]
-            #     chkpt['model'][k] = torch.nn.Parameter(torch.ones_like(a1.weight))
-            #     print('After ', chkpt['model'][k].shape)
-        input()
-        # print(model)
-        # Later delete!
-        # a1 = model.module_list[88][0]
-        # a2 = model.module_list[106][0]
-        # a3 = model.module_list[124][0]
-        # a1.weight = torch.nn.Parameter(torch.ones_like(a1.weight))
-        # a2.weight = torch.nn.Parameter(torch.ones_like(a2.weight))
-        # a3.weight = torch.nn.Parameter(torch.ones_like(a3.weight))
 
         # freeze all layers' param except detection layers
-        for i, m in enumerate(model.module_list):
-            if i != 88 or i != 105 or i != 124: # detection layer's index --> how to automatically set??
-                model.freeze(i)
+        # for i, m in enumerate(model.module_list):
+        #     if i not in n_detlayers:
+        #         model.freeze(i) --> Not working --> non-finite loss appeared
 
         # Change optimizer's size to new number of classes # chkpt['optimizer'].keys() # ['state', 'param_groups']
-        songs_classes = 13
-        songs_filters = (songs_classes+5)*3
-        etri_classes = 5
-        etri_filters = (etri_classes+5)*3
-        for state in chkpt['optimizer']['state'].values():
-            for k, v in state.items():
-                list_v_size = list(v.size())
-                if list_v_size == [etri_filters] :#or list(v.size()[0]) == [30]: # and (v.size() == torch.Size[([30])] or v.size()[0] == 30) :
-                    print('list(v.size()) == [30] --> k: {} v: {}'.format(k, v.size()))
-                    a = torch.cat([v.clone(), torch.zeros((songs_filters-etri_filters))], 0)
-                    state[k] = a.clone()
-
-                elif list_v_size[0] == etri_filters:
-                    print('list(v.size())[0] == 30 --> k: {} v: {}'.format(k, v.size()))
-                    a = torch.cat([v.clone(), torch.zeros((songs_filters-etri_filters, list_v_size[1], list_v_size[2], list_v_size[3]))])
-                    state[k] = a.clone()
 
 
-        for state in chkpt['optimizer']['state'].values():
-            for k, v in state.items():
-                print('v.shape: ', v.shape)
-        input()
+        if songs_classes != etri_classes and opt.resume_etri:
+            for state in chkpt['optimizer']['state'].values():
+                for k, v in state.items():
+                    list_v_size = list(v.size())
+                    if list_v_size == [etri_filters] :#or list(v.size()[0]) == [30]: # and (v.size() == torch.Size[([30])] or v.size()[0] == 30) :
+                        rand_tensor = 0.1*torch.rand((songs_filters-etri_filters)).to(device)
+                        a = torch.cat([v.clone(), rand_tensor], 0).to(device) # to(device) necessary for gpu!
+                        state[k] = a.clone()
+
+                    elif list_v_size[0] == etri_filters:
+                        rand_tensor= 0.1* torch.rand((songs_filters - etri_filters,
+                                                      list_v_size[1], list_v_size[2], list_v_size[3])).to(device)
+                        a = torch.cat([v.clone(), rand_tensor])
+                        state[k] = a.clone()
 
         # load model
         try:
@@ -204,7 +196,7 @@ def train():
 
         # load results
         if chkpt.get('training_results') is not None:
-            with open(results_file, 'w') as file:
+            with open(results_file, 'a') as file:
                 file.write(chkpt['training_results'])  # write results.txt
 
         start_epoch = chkpt['epoch'] + 1
@@ -216,7 +208,7 @@ def train():
 
     # Mixed precision training https://github.com/NVIDIA/apex
     if mixed_precision:
-        model, optimizer = amp.initialize(model, optimizer, opt_level='O1', verbosity=0)
+        model, optimizer = amp.initialize(model, optimizer, opt_level='O1', verbosity=0) # verbosity=1: set to 0 to suppress Amp-related output
 
     # Scheduler https://arxiv.org/pdf/1812.01187.pdf
     # lf = lambda x: (1 + math.cos(x * math.pi / epochs)) / 2  # cosine https://arxiv.org/pdf/1812.01187.pdf
@@ -228,7 +220,14 @@ def train():
     ###### Modified lr when resume ######
     lf = lambda x: (((1 + math.cos(x * math.pi / epochs)) / 2) ** 1.0) * 0.95 + 0.05  # cosine
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # This also has warm-up stage of lr
-    scheduler.last_epoch = start_epoch - 1
+    if opt.resume_etri:
+        scheduler.last_epoch = start_epoch - 1 -500
+    print('scheduler.last_epoch: ', scheduler.last_epoch)
+    print("Please check learning rate schedules during the whole epochs!")
+    print('scheduler: ', lr_scheduler)
+    # {'last_epoch': 29, 'base_lrs': [0.01, 0.01, 0.01], '_step_count': 1, '_get_lr_called_within_step': False,
+    #  '_last_lr': [0.01, 0.01, 0.01], 'lr_lambdas': [None, None, None]}
+
     # https://discuss.pytorch.org/t/a-problem-occured-when-resuming-an-optimizer/28822
     ######################################
 
@@ -277,7 +276,6 @@ def train():
     model.gr = 0.0  # giou loss ratio (obj_loss = 1.0 or giou)
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device)  # attach class weights
 
-
     # Start training
     nb = len(dataloader)  # number of batches
     prebias = start_epoch == 0
@@ -289,8 +287,7 @@ def train():
     print('Starting training for %g epochs...' % epochs)
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
-
-        # Prebias
+        # if start_epoch == 0
         if prebias:
             ne = 3  # number of prebias epochs
             ps = 0.1, 0.9  # prebias settings (lr=0.1, momentum=0.9)
@@ -319,7 +316,7 @@ def train():
             imgs = imgs.to(device).float() / 255.0  # uint8 to float32, 0 - 255 to 0.0 - 1.0
             targets = targets.to(device)
 
-            # Hyperparameter Burn-in
+            # Hyper-parameter Burn-in
             n_burn = 200  # number of burn-in batches
             if ni <= n_burn:
                 # g = (ni / n_burn) ** 2  # gain
@@ -333,7 +330,7 @@ def train():
 
             # Plot images with bounding boxes
             if ni < 1:
-                f = opt.output +os.sep + 'train_batch%g.png' % i  # filename
+                f = opt.output + os.sep + 'train_batch%g.png' % i  # filename
                 plot_images(imgs=imgs, targets=targets, paths=paths, fname=f)
                 if tb_writer:
                     tb_writer.add_image(f, cv2.imread(f)[:, :, ::-1], dataformats='HWC')
@@ -377,9 +374,7 @@ def train():
             mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
             mem = '%.3gG' % (torch.cuda.memory_cached() / 1E9 if torch.cuda.is_available() else 0)  # (GB)
             s = ('%10s' * 2 + '%10.3g' * 6) % ('%g/%g' % (epoch, epochs - 1), mem, *mloss, len(targets), img_size)
-            pbar.set_description(s) # display func
-
-
+            pbar.set_description(s)  # display func
             # end batch ------------------------------------------------------------------------------------------------
 
         # Update scheduler
@@ -390,7 +385,7 @@ def train():
         final_epoch = epoch + 1 == epochs
         if not opt.notest or final_epoch:  # Calculate mAP
             is_coco = any([x in data for x in ['coco.data', 'coco2014.data', 'coco2017.data']]) and model.nc == 80 # False
-            results, maps = test.test(opt,
+            results, maps, class_names = test.test(opt,
                                       cfg,
                                       data,
                                       batch_size=batch_size * 2,
@@ -411,8 +406,15 @@ def train():
         # Write Tensorboard results
         if tb_writer:
             x = list(mloss) + list(results)
+
             titles = ['GIoU', 'Objectness', 'Classification', 'Train loss',
                       'Precision', 'Recall', 'mAP', 'F1', 'val GIoU', 'val Objectness', 'val Classification']
+            # add Average Precision per class to tensorboard
+            ap_classes = list(maps)
+
+            for ap, cn in zip(ap_classes, class_names):
+                tb_writer.add_scalar("AP_"+ cn, ap, epoch)
+
             for xi, title in zip(x, titles):
                 tb_writer.add_scalar(title, xi, epoch)
 
@@ -464,14 +466,14 @@ def train():
             del chkpt
 
         # end epoch ----------------------------------------------------------------------------------------------------
-    # tb_writer.close()
+    tb_writer.close()
     # end training
 
-    n = opt.name
+    n = opt.name  # =  0
     if len(n):
         n = '_' + n if not n.isnumeric() else n
         fresults, flast, fbest = 'results%s.txt' % n, 'last%s.pt' % n, 'best%s.pt' % n
-        os.rename('results.txt', fresults)
+        # os.rename('results.txt', fresults)
         os.rename(wdir + 'last.pt', wdir + flast) if os.path.exists(wdir + 'last.pt') else None
         os.rename(wdir + 'best.pt', wdir + fbest) if os.path.exists(wdir + 'best.pt') else None
         if opt.bucket:  # save to cloud
@@ -494,7 +496,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=16)  # effective bs = batch_size * accumulate = 16 * 4 = 64
     parser.add_argument('--accumulate', type=int, default=4, help='batches to accumulate before optimizing')
     parser.add_argument('--cfg', type=str, default='input/cfg/yolov3-spp.cfg', help='*.cfg path')
-    parser.add_argument('--data', type=str, default='input/dataset/etri/etri_undistort.data', help='*.data path')
+    parser.add_argument('--data', type=str, help='*.data path')
     parser.add_argument('--multi-scale', action='store_true', help='adjust (67% - 150%) img_size every 10 batches')
     parser.add_argument('--img-size', nargs='+', type=int, default=[416], help='train and test image-sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
@@ -512,6 +514,8 @@ if __name__ == '__main__':
     parser.add_argument('--var', type=float, help='debug variable')
     parser.add_argument('--s', type=float, default=0.0001, help='scale for sparsity training')
     parser.add_argument('--output', type=str, default='results', help='model result folder')  # output folder
+    parser.add_argument('--n-classes', type=int, default=0, help='number of classes in the dataset')
+    parser.add_argument('--resume-etri', action='store_true', help='flag for resuming ETRI-pretrained model training')
     opt = parser.parse_args()
     # opt.weights = last if opt.resume else opt.weights
 
@@ -533,12 +537,12 @@ if __name__ == '__main__':
     # Visualize the result by tensorboard
     tb_writer = None
     if not opt.evolve:  # Train normally
-        # try:
-        #     # Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/
-        #     from torch.utils.tensorboard import SummaryWriter
-        #     tb_writer = SummaryWriter()
-        # except:
-        #     pass
+        try:
+            # Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/
+            from torch.utils.tensorboard import SummaryWriter
+            tb_writer = SummaryWriter()
+        except:
+            pass
         train()  # train normally
 
     else:  # Evolve hyperparameters (optional)

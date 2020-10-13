@@ -23,6 +23,7 @@ def test(opt,
          single_cls=False,
          model=None,
          dataloader=None):
+
     # Initialize/load model and set device
     if model is None:
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
@@ -50,7 +51,7 @@ def test(opt,
             model = nn.DataParallel(model)
     else:  # called by train.py
         device = next(model.parameters()).device  # get model device
-        verbose = False
+        verbose = True # False
 
     # Configure run
     data = parse_data_cfg(data)
@@ -102,6 +103,7 @@ def test(opt,
             # Run model
             t = torch_utils.time_synchronized()
             inf_out, train_out = model(imgs)  # inference and training outputs
+            # train_out이 뭐지??
             t0 += torch_utils.time_synchronized() - t
 
             if aug:
@@ -122,7 +124,9 @@ def test(opt,
         # Statistics per image
         for si, pred in enumerate(output):
             labels = targets[targets[:, 0] == si, 1:]
-            nl = len(labels)
+
+            nl = len(labels)  # number of labels
+            # print(nl)
             tcls = labels[:, 0].tolist() if nl else []  # target class
             seen += 1
 
@@ -159,10 +163,12 @@ def test(opt,
                 tcls_tensor = labels[:, 0]
 
                 # target boxes
-                tbox = xywh2xyxy(labels[:, 1:5]) * whwh
+                tbox = xywh2xyxy(labels[:, 1:5]) * whwh # 4x1 [width,height, width, height]
 
                 # Per target class
                 for cls in torch.unique(tcls_tensor):
+                    # print("cls.shape: ", cls.shape)
+                    # nonzero() -> Return the index of the values which are not zero.
                     ti = (cls == tcls_tensor).nonzero().view(-1)  # prediction indices
                     pi = (cls == pred[:, 5]).nonzero().view(-1)  # target indices
 
@@ -239,7 +245,7 @@ def test(opt,
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map, mf1, *(loss.cpu() / len(dataloader)).tolist()), maps
+    return (mp, mr, map, mf1, *(loss.cpu() / len(dataloader)).tolist()), maps, names
 
 
 if __name__ == '__main__':
