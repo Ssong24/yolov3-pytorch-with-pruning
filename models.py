@@ -249,7 +249,7 @@ class YOLOLayer(nn.Module):
 
         # p.view(bs, 255, 13, 13) -- > (bs, 3, 13, 13, 85)  # (bs, anchors, grid, grid, #(classes) + xywh + conf)
         p = p.view(bs, self.na, self.no, self.ny, self.nx).permute(0, 1, 3, 4, 2).contiguous()  # prediction
-        print('index: {} p.shape: {}'.format(self.index, p.shape))
+        # print('index: {} p.shape: {}'.format(self.index, p.shape))
         if self.training:
             return p
 
@@ -330,7 +330,7 @@ class Darknet(nn.Module):
 
 
             elif mtype == 'yolo':
-                print('shape of yolo output: ', (module(x, img_size, out).shape))
+                # print('shape of yolo output: ', (module(x, img_size, out).shape))
                 yolo_out.append(module(x, img_size, out))  # append( idx = 89, 101, 113 YOLO's output )
 
             out.append(x if self.routs[i] else [])
@@ -421,7 +421,9 @@ def create_grids(self, img_size=416, ng=(13, 13), device='cpu', type=torch.float
     self.grid_xy = torch.stack((xv, yv), 2).to(device).type(type).view((1, 1, ny, nx, 2))
 
     # build wh gains
-    self.anchor_vec = self.anchors.to(device) / self.stride
+    # print('self.anchors: {}, self.stride: {} '.format( self.anchors, self.stride))
+    self.anchor_vec = self.anchors.to(device) / self.stride # shape: [3, 2]
+
     self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2).type(type)  # same value as anchor_vec, but different shape: [1, 3, 1, 1, 2]
     self.ng = torch.Tensor(ng).to(device)  # [13.0, 13.0] -- [26.0, 26.0] -- [52.0, 52.0]
     self.nx = nx

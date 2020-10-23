@@ -46,6 +46,7 @@ def analyze():
     accumulate = opt.accumulate  # effective bs = batch_size * accumulate = 16 * 4 = 64
     weights = opt.weights  # initial training weights
 
+    lr_file = "learning_rate.txt"
     # Initialize
     init_seeds()
     if opt.multi_scale:
@@ -119,8 +120,10 @@ def analyze():
     if mixed_precision:
         model, optimizer = amp.initialize(model, optimizer, opt_level='O1', verbosity=0) # verbosity=1: set to 0 to suppress Amp-related output
 
-    lf = lambda x: (((1 + math.cos(x * math.pi / epochs)) / 2) ** 1.0) * 0.95 + 0.05  # cosine
+    lf = lambda epoch: (((1 + math.cos(epoch * math.pi / epochs)) / 2) ** 1.0) * 0.95 + 0.05  # cosine
+    lr_e = hyp['lr0']
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # This also has warm-up stage of lr
+
 
     # Initialize distributed training
     if device.type != 'cpu' and torch.cuda.device_count() > 1 and torch.distributed.is_available():
@@ -132,7 +135,8 @@ def analyze():
 
         model.yolo_layers = model.module.yolo_layers  # move yolo layer indices to top level
 
-    # Dataset
+    # Dataset  --> mosaic Dataset으로 4개 이미지 중 3개 이미지 crop 된 채로 붙음.
+    # --> targets(=GT) 정보도 augment & mosaic로 인해 달라짐.
     dataset = LoadImagesAndLabels(train_path, img_size, batch_size, augment=True,
                                   hyp=hyp,  # augmentation hyperparameters
                                   rect=opt.rect,  # rectangular training
@@ -161,14 +165,11 @@ def analyze():
     model.gr = 0.0  # giou loss ratio (obj_loss = 1.0 or giou)
     model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device)  # attach class weights
 
+
     # for i, (md, ml, nm) in enumerate(zip(model.module_defs ,model.module_list, model.named_modules())):
     #     # print('{} {}'.format(i ,m))
     #     # print('{} {}'.format(i, md))
     #     print('{} {}'.format(i,nm))
-
-
-
-
 
 
     # Start training
@@ -184,6 +185,7 @@ def analyze():
 
     for epoch in range(start_epoch, epochs):
         model.train()
+
 
         if prebias:
             ne = 3  # number of prebias epochs
@@ -203,12 +205,17 @@ def analyze():
         print(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'GIoU', 'obj', 'cls', 'total', 'targets', 'img_size'))
 
         pbar = tqdm(enumerate(dataloader), total=nb)  # progress bar
+        print('scheduler learning rate: ', scheduler.state_dict())
+        print('learning rate: ', scheduler.get_last_lr())
 
         # one batch
         for i, (imgs, targets, paths, _) in pbar:
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device).float() / 255.0  # uint8 to float32 --> 0-255 to 0.0-1.0
             targets = targets.to(device)
+            # print('paths: ', paths)
+            # print('t: ', targets)
+            # input()
 
 
             n_burn = 200   # number of burn-in batches
@@ -224,7 +231,7 @@ def analyze():
             pred = model(imgs)
             # len(targets): objects' GT
             # len(pred) = 3
-            # pred[0].shape: [bs, 3, 13, 13, 85]
+            # pred[0].shape: [bs, 3, 13, 13, 85]  # img-size = 416
             # pred[1].shape: [bs, 3, 26, 26, 85]
             # pred[2].shape: [bs, 3, 52, 52, 85]
 
@@ -281,9 +288,13 @@ def analyze():
 
         # Write the result of one epoch in result.txt
 
+        # Write leraning rate of each epoch in lr_file
+        with open(lr_file, 'a') as f:
+            f.write(i + ' ' + scheduler.get_lr() +'\n')
+
         # Plot a line-by-line description of PyTorch model
 
-        #
+
         # Write Tensorboard results
 
         # Update best mAP --> Use the result of valid dataset
@@ -341,4 +352,6 @@ if __name__ == '__main__':
         mixed_precision = False
 
     analyze()
+
+
 
