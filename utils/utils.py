@@ -378,9 +378,12 @@ def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#iss
     return 1.0 - 0.5 * eps, 0.5 * eps
 
 
-def compute_loss(p, targets, model):  # predictions, targets, model
+def compute_loss(p, targets, model):  # predictions, targets(=> GT) , model
+    # targets = n x [image, class, x, y, w, h]
+
     ft = torch.cuda.FloatTensor if p[0].is_cuda else torch.Tensor
     lcls, lbox, lobj = ft([0]), ft([0]), ft([0])
+
     tcls, tbox, indices, anchor_vec = build_targets(model, targets)
     h = model.hyp  # hyperparameters
     red = 'mean'  # Loss reduction (sum or mean)
@@ -393,25 +396,27 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     cp, cn = smooth_BCE(eps=0.0)
 
     # focal loss
-    g = h['fl_gamma']  # focal loss gamma
+    g = h['fl_gamma']  # focal loss gamma = 0
     if g > 0:
         BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
 
     # Compute losses
     np, ng = 0, 0  # number grid points, targets
     for i, pi in enumerate(p):  # layer index, layer predictions
-        print('layer_index: {}, pred.shape: {}'.format(i, pi.shape))
-        print('pred type: ', type(pi))
+        # print('layer_index: {}, pred.shape: {}'.format(i, pi.shape))
+        # print('pred type: ', type(pi))
         b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
-        print('image {}, anchor {}, gridy {}, gridx {}'.format(b, a, gj, gi))
+        # each shape of b, a, gj, gi: 126 -- 710 -- 1046
+        # print('image {}, anchor {}, gridy {}, gridx {}'.format(b.shape, a.shape, gj.shape, gi.shape))
         tobj = torch.zeros_like(pi[..., 0])  # target obj
         # print('tobj: ', tobj)
         # print('tobj.shape: ', tobj.shape) # [0] is batch size
-        np += tobj.numel() # return length of input tensor (ex. tensor 4x6 -> output: 24)
+        np += tobj.numel()  # return length of input tensor (ex. tensor 4x6 -> output: 24)
 
         # Compute losses
         nb = len(b)  # number of images
-        if nb:  # number of targets
+        # print('nb: ', nb)
+        if nb:
             ng += nb
             ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
             # ps[:, 2:4] = torch.sigmoid(ps[:, 2:4])  # wh power loss (uncomment)
@@ -426,19 +431,22 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 
             if model.nc > 1:  # cls loss (only if multiple classes)
                 t = torch.full_like(ps[:, 5:], cn)  # targets
+                # print('cn: {} t.shape: {}'.format(cn,  t.shape))
+                # print('tcls[i]: ', tcls[i])
                 t[range(nb), tcls[i]] = cp
+                # print('t: ', t)
+                # print('ps[:, 5:]: ', ps[:,5:])
                 lcls += BCEcls(ps[:, 5:], t)  # BCE
+                # print('lcls: ', lcls)
                 # lcls += CE(ps[:, 5:], tcls[i])  # CE
 
-            # Append targets to text file
-            # with open('targets.txt', 'a') as file:
-            #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
-
         lobj += BCEobj(pi[..., 4], tobj)  # obj loss
+    # print('lcls: ', lcls)
 
     lbox *= h['giou']
     lobj *= h['obj']
     lcls *= h['cls']
+
     if red == 'sum':
         bs = tobj.shape[0]  # batch size
         lobj *= 3 / (6300 * bs) * 2  # 3 / np * 2
@@ -451,7 +459,7 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 
 
 def build_targets(model, targets):
-    # targets = [image, class, x, y, w, h]
+    # targets = [image, class, x, y, w, h]  # image -- 0
     nt = len(targets)
     tcls, tbox, indices, av = [], [], [], []
     multi_gpu = type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
@@ -461,38 +469,53 @@ def build_targets(model, targets):
         if multi_gpu:
             ng, anchor_vec = model.module.module_list[i].ng, model.module.module_list[i].anchor_vec
         else:
-            print('Single GPU')
             ng, anchor_vec = model.module_list[i].ng, model.module_list[i].anchor_vec
+        # ng = [13, 13] or [26, 26] or [52, 52]
+        # anchor_vec = self.anchors.to(device) / self.stride  ; shape = [3,2]
 
         # iou of targets-anchors
         t, a = targets, []
-        gwh = t[:, 4:6] * ng
-        if nt:
-            iou = wh_iou(anchor_vec, gwh)
+        # print('t[:, 4:6]: ', t[:, 4:6])
+        gwh = t[:, 4:6] * ng  # target info for 1x1. --> if multiplying ng, you can find GT wh in grid [13x13] or[26x26],[52x52]
+        # print('gwh: ', gwh)
 
+        if nt:  # if len(targets) > 0
+            iou = wh_iou(anchor_vec, gwh)
+            # print('iou.shape: ', iou.shape) [3, 22]
             if use_all_anchors:
                 na = len(anchor_vec)  # number of anchors
                 a = torch.arange(na).view((-1, 1)).repeat([1, nt]).view(-1)
                 t = targets.repeat([na, 1])
                 gwh = gwh.repeat([na, 1])
+                # print('na: {} nt: {} a:{} t = {} gwh: {}'.format(na, nt, a.shape, t.shape, gwh.shape)) #=> 3 | 22 | [66] | [66,6] | [66,2}
             else:  # use best anchor only
                 iou, a = iou.max(0)  # best iou and anchor
 
             # reject anchors below iou_thres (OPTIONAL, increases P, lowers R)
             if reject:
-                j = iou.view(-1) > model.hyp['iou_t']  # iou threshold hyperparameter
+                j = iou.view(-1) > model.hyp['iou_t']  # iou threshold hyperparameter - current iou_t = 0.25
                 t, a, gwh = t[j], a[j], gwh[j]
 
         # Indices
-        b, c = t[:, :2].long().t()  # target image, class
-        gxy = t[:, 2:4] * ng  # grid x, y
+        b, c = t[:, :2].long().t()  # target image(= 0), class
+        gxy = t[:, 2:4] * ng  # grid x, y  -- if multiplying ng, you can find GT wh in grid [13x13] or[26x26],[52x52]
         gi, gj = gxy.long().t()  # grid x, y indices
-        indices.append((b, a, gj, gi))
+        # gi = integer of gxy-x = [4, 7, 10, 4] | gj = integer of gxy-y = [4, 3, 4, 4]
+        # print('gxy: ', gxy)
+        # print("b: ", b)
+        # print("a: " , a)
+
+        indices.append((b, a, gj, gi))  # gj, gi는 gxy의 정수부분 담당
 
         # Box
-        gxy -= gxy.floor()  # xy
+        gxy -= gxy.floor()  # xy  -> gxy의 소수부분 담당
         tbox.append(torch.cat((gxy, gwh), 1))  # xywh (grids)
         av.append(anchor_vec[a])  # anchor vec
+
+        # print('box: gxy: ', gxy)
+        # print('tbox: ', tbox)
+        # print('av: ', av)
+
 
         # Class
         tcls.append(c)
@@ -500,7 +523,7 @@ def build_targets(model, targets):
             assert c.max() < model.nc, 'Model accepts %g classes labeled from 0-%g, however you labelled a class %g. ' \
                                        'See https://github.com/ultralytics/yolov3/wiki/Train-Custom-Data' % (
                                            model.nc, model.nc - 1, c.max())
-
+        # input()
     return tcls, tbox, indices, av
 
 
