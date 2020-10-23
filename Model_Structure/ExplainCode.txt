@@ -1,0 +1,35 @@
+---- [ train.py ] ----
+Task
+ - Set img size for training and inference, num of epochs, batch size, accumulate(?), weights
+ - Set the path for trained model weights
+ - Initialize : init_seeds
+ - parse configuration file and set dataset path, num of classes
+ - Initialize model: Darknet(cfg).to(device)
+---- [ models.py ] ----
+Func
+ - create_modules(module_defs, img_size)
+ - get_yolo_layers(model)
+ - create_grids(self, img_size, ng, device, type)
+ - load_darknet_weights(self,weights, cutoff)
+ - save_weights(self, path, cutoff)
+ - convert(cfg, weights)
+ - attempt_download(weights)
+
+Class
+ - weightedFeatureFusion(nn.Module)
+ - SwishImplementation(torch.autograd.Function)
+ - MemoryEfficientSwish(nn.Module)
+ - Swish(nn.Module)
+ - Mish(nn.Module)
+ - YOLOLayer(nn.Module)
+ - Darknet(nn.Module)
+
+---- [ utils/parse_config.py ] ----
+Func
+ - parse_model_cfg(path)
+ - parse_data_cfg(path)
+
+
+---- [ utils/utils.py ] ----
+
+
