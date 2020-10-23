@@ -49,10 +49,13 @@ def detect():
             img = img.unsqueeze(0)
 
         # Inference
+        t1 = torch_utils.time_synchronized()
         pred = model(img[:, :, :, :])[0].float() if half else model(img[:, :, :, :])[0]
+
 
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
+        # t2 = torch_utils.time_synchronized()
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
@@ -61,18 +64,30 @@ def detect():
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+
+                s = '%g: ' % d_idx
+                s += '%gx%g ' % img.shape[2:]  # print string
+                # Print results
+                for c in det[:, -1].unique():
+                    n = (det[:, -1] == c).sum()  # detections per class
+                    s += '%g %ss, ' % (n, names[int(c)])  # add to string
+
                 # Write results
                 for *xyxy, conf, cls in det:
                     if view_img:  # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)])
-            # Stream results
+
+            # Stream results - if you wanna view the image, uncomment!
             if view_img:
                 cv2.imshow(p, im0)
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
+        t2 = torch_utils.time_synchronized()
 
-        if d_idx == fr_limit - 1:
+        print('%sDone. (%.5fs)\n'%(s, t2-t1))
+
+        if d_idx == fr_limit - 1: # --> if you wanna see only portion of images, Uncomment!
             processed_time = time.time() - t0
             break
 
@@ -99,7 +114,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1) or cpu')
     parser.add_argument('--view-img', action='store_true', help='display results')
     parser.add_argument('--classes', nargs='+', type=int, help='filter by class')
-    parser.add_argument('--fr-limit', type=int,default=1000, help='frame limit')
+    parser.add_argument('--fr-limit', type=int,default=3400, help='frame limit')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--save', type=str, help='save frame per second (FPS.txt)')
 
