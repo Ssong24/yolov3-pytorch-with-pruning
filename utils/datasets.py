@@ -197,36 +197,43 @@ class LoadStreams:  # multiple IP or RTSP cameras
     def __init__(self, sources='streams.txt', img_size=416):
         self.mode = 'images'
         self.img_size = img_size
-
+        isFile = False
         if os.path.isfile(sources):
+            isFile = True
             with open(sources, 'r') as f:
                 sources = [x.strip() for x in f.read().splitlines() if len(x.strip())]
-                print('sources: ', sources)
         else:
             sources = [sources]
 
         n = len(sources)
         self.imgs = [None] * n
         self.sources = sources
-
+        # print('split of self.sources: ', self.sources[0].split('.')[-1])
         for i, s in enumerate(sources):
-            s = s.replace('\\', '/')
+            # s = s.replace('\\', '/')
             # Start the thread to read frames from the video stream
             print('%g/%g: %s... ' % (i + 1, n, s), end='')
-            cap = cv2.VideoCapture(0 if s == '0' else s)
-            assert cap.isOpened(), 'Failed to open %s' % s
-            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS) % 100
-            _, self.imgs[i] = cap.read()  # guarantee first frame
-            print(' success (%gx%g at %.2f FPS).' % (w, h, fps))
+            if isFile:
+                img = cv2.imread(s)
+                w = img.shape[1]
+                h = img.shape[0]
+                self.imgs[i] = img
+            else:
+                cap = cv2.VideoCapture(0 if s == '0' else s)
+                assert cap.isOpened(), 'Failed to open %s' % s
+                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS) % 100
+                _, self.imgs[i] = cap.read()  # guarantee first frame
+            print(' success(%gx%g)'%(w, h))
+            # print(' success (%gx%g at %.2f FPS).' % (status,w, h, fps))
             # thread = Thread(target=self.update, args=([i, cap]), daemon=True)
             # thread.start()
 
         print('')  # newline
 
         # check for common shapes
-        s = np.stack([letterbox(x, new_shape=self.img_size)[0].shape for x in self.imgs], 0)  # inference shapes
+        s = np.stack([letterbox(x_img, new_shape=self.img_size)[0].shape for x_img in self.imgs], 0)  # inference shapes
         self.rect = np.unique(s, axis=0).shape[0] == 1  # rect inference if all shapes equal
         if not self.rect:
             print('WARNING: Different stream shapes detected. For optimal performance supply similarly-shaped streams.')
@@ -296,7 +303,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Define labels
         img_folder = ""
         etri_img_folder = "image\\640x480"
-        cityscape_img_folder = "leftImg8bit_FE"
+        cityscape_img_folder = "leftImg8bit" + "_Mercat"
         if self.img_files[0].find(etri_img_folder) > 0:
             img_folder = etri_img_folder
 
@@ -305,8 +312,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         else:
             print("Wrong image folder name. Please rewrite!")
             exit(-1)
-
-        self.label_files = [x.replace(img_folder+'\\', 'gtFine_FE\\').replace(os.path.splitext(x)[-1], '.txt')
+        # print('img_files[0]: ', self.img_files[0])
+        self.label_files = [x.replace(img_folder+'\\', 'gtFine_Mercat\\').replace(os.path.splitext(x)[-1], '.txt')
                             for x in self.img_files]
         if img_folder == cityscape_img_folder:
             self.label_files = [x.replace("leftImg8bit","gtFine_polygons") for x in self.label_files]
@@ -328,8 +335,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             ar = s[:, 1] / s[:, 0]  # aspect ratio
             i = ar.argsort()
             self.img_files = [self.img_files[i] for i in i]
+
             self.label_files = [self.label_files[i] for i in i]
-            #('self.label_files: ', self.label_files)
             self.shapes = s[i]  # wh
             ar = ar[i]
 
@@ -363,6 +370,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     print('missing label %s' % self.label_files[i])  # file missing
                     continue
 
+
                 if l.shape[0]:
                     assert l.shape[1] == 5, '> 5 label columns: %s' % file
                     assert (l >= 0).all(), 'negative labels: %s' % file
@@ -373,7 +381,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         # print('WARNING: duplicate rows in %s' % self.label_files[i])  # duplicate rows
                     if single_cls:
                         l[:, 0] = 0  # force dataset into single-class mode
-                    self.labels[i] = l
+
+                    self.labels[i] = l  # GT label from text file goes into self.labels[i]
                     nf += 1  # file found
 
                     # Create subdataset (a smaller dataset)
@@ -414,6 +423,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     nf, nm, ne, nd, n)
             assert nf > 0, 'No labels found. See %s' % help_url
 
+
         # Cache images into memory for faster training (WARNING: large datasets may exceed system RAM)
         if cache_images:  # if training
             gb = 0  # Gigabytes of cached images
@@ -447,6 +457,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         hyp = self.hyp
         if self.mosaic:
             # Load mosaic
+            # print('\nself.mosaic! label_path: ', label_path)
             img, labels = load_mosaic(self, index)
             shapes = None
 
@@ -470,14 +481,18 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
                 if x.size > 0:
                     # Normalized xywh to pixel xyxy format
+                    # print('pad width: {}, pad height: {}'.format(pad[0], pad[1]))
                     labels = x.copy()
                     labels[:, 1] = ratio[0] * w * (x[:, 1] - x[:, 3] / 2) + pad[0]  # pad width
                     labels[:, 2] = ratio[1] * h * (x[:, 2] - x[:, 4] / 2) + pad[1]  # pad height
                     labels[:, 3] = ratio[0] * w * (x[:, 1] + x[:, 3] / 2) + pad[0]
                     labels[:, 4] = ratio[1] * h * (x[:, 2] + x[:, 4] / 2) + pad[1]
+                    # print('if x.size > 0 labels: {}'.format(labels))
 
         if self.augment:
+            # print('\nSelf.augment: label_path: {}\nlabels: {} \nlength: {}'.format(label_path, labels, len(labels)))
             # Augment imagespace
+            # print('self.mosaic: ', self.mosaic)  # True
             if not self.mosaic:
                 img, labels = random_affine(img, labels,
                                             degrees=hyp['degrees'],
@@ -493,6 +508,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             #     labels = cutout(img, labels)
 
         nL = len(labels)  # number of labels
+        # print('label length: {}'.format(nL))
         if nL:
             # convert xyxy to xywh
             labels[:, 1:5] = xyxy2xywh(labels[:, 1:5])
@@ -500,6 +516,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             # Normalize coordinates 0 - 1
             labels[:, [2, 4]] /= img.shape[0]  # height
             labels[:, [1, 3]] /= img.shape[1]  # width
+            # print('After xyxy2xywh and normalized - labels: {}'.format(labels))
 
         if self.augment:
             # random left-right flip
@@ -518,7 +535,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         labels_out = torch.zeros((nL, 6))
         if nL:
-            labels_out[:, 1:] = torch.from_numpy(labels)
+            labels_out[:, 1:] = torch.from_numpy(labels)  # if (lr_filp) and (rand.rand() < 0.5): labels[:,1] = 1- labels[:,1]
+            # print('labels_out: {}'.format(labels_out))
 
         # Convert
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
@@ -566,6 +584,7 @@ def load_mosaic(self, index):
     xc, yc = [int(random.uniform(s * 0.5, s * 1.5)) for _ in range(2)]  # mosaic center x, y
     img4 = np.zeros((s * 2, s * 2, 3), dtype=np.uint8) + 128  # base image with 4 tiles
     indices = [index] + [random.randint(0, len(self.labels) - 1) for _ in range(3)]  # 3 additional image indices
+    # print('img4.size: {}= {}*2 x {}*2 x 3 indices: {} len(self.labels)-1: {}'.format(img4.size,s,s,  indices, len(self.labels)-1))
     for i, index in enumerate(indices):
         # Load image
         img, _, (h, w) = load_image(self, index)
@@ -587,7 +606,7 @@ def load_mosaic(self, index):
         img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
         padw = x1a - x1b
         padh = y1a - y1b
-
+        # print('padw, padh: {}, {}'.format(padw, padh))
         # Load labels
         label_path = self.label_files[index]
         if os.path.isfile(label_path):
@@ -595,23 +614,29 @@ def load_mosaic(self, index):
             if x is None:  # labels not preloaded
                 with open(label_path, 'r') as f:
                     x = np.array([x.split() for x in f.read().splitlines()], dtype=np.float32)
-
+            # print('label_path: ', label_path)
             if x.size > 0:
                 # Normalized xywh to pixel xyxy format
                 labels = x.copy()
+                # print('Be- len: {} labels: {}'.format(len(labels), labels))  # GT label from text file
                 labels[:, 1] = w * (x[:, 1] - x[:, 3] / 2) + padw
                 labels[:, 2] = h * (x[:, 2] - x[:, 4] / 2) + padh
                 labels[:, 3] = w * (x[:, 1] + x[:, 3] / 2) + padw
                 labels[:, 4] = h * (x[:, 2] + x[:, 4] / 2) + padh
+                # print('Af- len: {} labels: '.format(len(labels), labels))  # xyxy + padw, padh
             else:
                 labels = np.zeros((0, 5), dtype=np.float32)
-            labels4.append(labels)
+            labels4.append(labels)  # same as Af. labels
+    # print('len(labels4): ', len(labels4))
+
 
     # Concat/clip labels
     if len(labels4):
+        # print('Be- len: {} labels4: {}'.format(len(labels4), labels4))
         labels4 = np.concatenate(labels4, 0)
         # np.clip(labels4[:, 1:] - s / 2, 0, s, out=labels4[:, 1:])  # use with center crop
         np.clip(labels4[:, 1:], 0, 2 * s, out=labels4[:, 1:])  # use with random_affine
+    # print('Af- len: {} labels4: {}'.format(len(labels4), labels4))
 
     # Augment
     # img4 = img4[s // 2: int(s * 1.5), s // 2:int(s * 1.5)]  # center crop (WARNING, requires box pruning)
@@ -621,7 +646,11 @@ def load_mosaic(self, index):
                                   scale=self.hyp['scale'] * 1,
                                   shear=self.hyp['shear'] * 1,
                                   border=-s // 2)  # border to remove
+    # print('Af random_affine: len: {} labels4: {}'.format(len(labels4), labels4))
 
+    # numpy_img = np.reshape(img4, (512, 512, 3))
+    # display_img = Image.fromarray(numpy_img, 'RGB')
+    # display_img.show()
     return img4, labels4
 
 
