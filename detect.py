@@ -97,8 +97,9 @@ def detect(save_img=False):
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # Display and save arguments
-    print(opt)
+    # print(opt)
     save_opts(os.path.join(out,'options'), options=opt)
+    print('save_txt: ', save_txt)
 
     # Initialize
     device = torch_utils.select_device(device='cpu' if ONNX_EXPORT else opt.device)
@@ -191,8 +192,10 @@ def detect(save_img=False):
         text_name = img_name.split('.')[0] + '.txt'
         det_path = os.path.join(folder_det, text_name)
 
+
         if os.path.exists(det_path):
             os.remove(det_path)
+        det_path = det_path.replace('leftImg8bit', 'gtFine_polygons')
 
         if save_txt:
             pred = model(img[img_index:img_index+1,:,:,:])[0].float() if half else model(img[img_index:img_index+1,:,:,:])[0] #when create detection text file.
@@ -209,46 +212,45 @@ def detect(save_img=False):
             pred = apply_classifier(pred, modelc, img, im0s)
 
         # Process detections
-        for i, det in enumerate(pred):  # detections per image
-            if webcam:  # batch_size >= 1
-                p, s, im0 = path[i], '%g: ' % i, im0s[i]
-                if save_txt:
-                    s = '%g: ' % img_index
-            else:
-                p, s, im0 = path, '', im0s
-            # set video_name, detection text file path
-            video_name = opt.video_name
-            if opt.video_name is None:
-                video_name = Path(p).name
-            save_path = str(Path(out) / video_name)
+        with open(det_path, 'a') as file:
+            for i, det in enumerate(pred):  # detections per image
+                if webcam:  # batch_size >= 1
+                    p, s, im0 = path[i], '%g: ' % i, im0s[i]
+                    if save_txt:
+                        s = '%g: ' % img_index
+                else:
+                    p, s, im0 = path, '', im0s
+                # set video_name, detection text file path
+                video_name = opt.video_name
+                if opt.video_name is None:
+                    video_name = Path(p).name
+                save_path = str(Path(out) / video_name)
+                s += '%gx%g ' % img.shape[2:]  # print string
 
-            s += '%gx%g ' % img.shape[2:]  # print string
-
-            # Even though det is None, create text file
-            if det is None:
-                if save_txt:
-                    with open(det_path, 'a') as file:
+                # Even though det is None, create text file
+                if det is None:
+                    if save_txt:
                         file.write('')
 
-            if det is not None and len(det):
-                # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
-                # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
-                    s += '%g %ss, ' % (n, names[int(c)])  # add to string
+                if det is not None and len(det):
+                    # Rescale boxes from img_size to im0 size
+                    det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+                    # Print results
+                    for c in det[:, -1].unique():
+                        n = (det[:, -1] == c).sum()  # detections per class
+                        s += '%g %ss, ' % (n, names[int(c)])  # add to string
 
-                # Write results
-                for *xyxy, conf, cls in det:
-                    xywh_rel = xyxy2xywh_rel(xyxy, im0.shape)
-                    # xywh_abs = xyxy2xywh_abs(xyxy) # for check with my own eyes
-                    if save_txt:  # Write to file
-                        with open(det_path, 'a') as file:
+                    # Write results
+                    for *xyxy, conf, cls in det:
+                        xywh_rel = xyxy2xywh_rel(xyxy, im0.shape)
+                        # xywh_abs = xyxy2xywh_abs(xyxy) # for check with my own eyes
+                        if save_txt:  # Write to file
                             file.write(('%g ' * 6 + '\n') % (cls, conf, *xywh_rel))
 
-                    if save_img or view_img:  # Add bbox to image
-                        label = '%s %.2f' % (names[int(cls)], conf)
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)])
+                        if save_img or view_img:  # Add bbox to image
+                            label = '%s %.2f' % (names[int(cls)], conf)
+                            plot_one_box(xyxy, im0, label=label, color=colors[int(cls)])
+            file.close()
 
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)\n' % (s, t2 - t1))
@@ -262,6 +264,7 @@ def detect(save_img=False):
             # Save results (image with detections)
             if save_img:
                 if dataset.mode == 'images':
+                    print('Done!')
                     cv2.imwrite(save_path, im0)
                 else:
                     if vid_path != save_path:  # new video
@@ -306,7 +309,7 @@ if __name__ == '__main__':
     parser.add_argument('--move', action='store_true', help='move detection files in destination folder')
     parser.add_argument('--src-dir', type=str, help='source directory of detection files for copy or move')
     parser.add_argument('--dst-dir', type=str, help='destination directory of detection files for copy or move')
-
+    parser.add_argument('--no-conf', action='store_true', help='save text file without confidence')
     opt = parser.parse_args()
 
     if opt.copy:
