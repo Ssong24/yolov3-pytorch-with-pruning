@@ -203,6 +203,7 @@ def train():
         del chkpt
 
     elif len(weights) > 0:  # darknet format
+        print('load darknet weight')
         # possible weights are '*.weights', 'yolov3-tiny.conv.15',  'darknet53.conv.74' etc.
         load_darknet_weights(model, weights)
 
@@ -310,10 +311,14 @@ def train():
 
         mloss = torch.zeros(4).to(device)  # mean losses
         print(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'GIoU', 'obj', 'cls', 'total', 'targets', 'img_size'))
-        pbar = tqdm(enumerate(dataloader), total=nb)  # progress bar
+        pbar = tqdm(enumerate(dataloader), total=nb)  # progress bar , nb= number of batch
+
+        # optimizer.zero_grad()  - Erase optimizer's gradient info from valid dataset -- but ask Miku!
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device).float() / 255.0  # uint8 to float32, 0 - 255 to 0.0 - 1.0
+            # print('targets: ', targets)
+            # print('paths: ', paths)
             targets = targets.to(device)
 
             # Hyper-parameter Burn-in
