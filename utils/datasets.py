@@ -303,7 +303,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # Define labels
         img_folder = ""
         etri_img_folder = "image\\640x480"
-        cityscape_img_folder = "leftImg8bit" + "_Mercat"
+        cityscape_img_folder = "leftImg8bit" #+ "_Mercat"
+        cityscape_txt_folder = cityscape_img_folder.replace("leftImg8bit", "gtFine")
         if self.img_files[0].find(etri_img_folder) > 0:
             img_folder = etri_img_folder
 
@@ -313,7 +314,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             print("Wrong image folder name. Please rewrite!")
             exit(-1)
         # print('img_files[0]: ', self.img_files[0])
-        self.label_files = [x.replace(img_folder+'\\', 'gtFine_Mercat\\').replace(os.path.splitext(x)[-1], '.txt')
+        self.label_files = [x.replace(img_folder+'\\', cityscape_txt_folder+'\\').replace(os.path.splitext(x)[-1], '.txt')
                             for x in self.img_files]
         if img_folder == cityscape_img_folder:
             self.label_files = [x.replace("leftImg8bit","gtFine_polygons") for x in self.label_files]
