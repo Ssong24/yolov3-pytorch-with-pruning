@@ -65,6 +65,10 @@ def train():
     last = wdir + 'last.pt'
     best = wdir + 'best.pt'
     results_file = wdir + 'results.txt'
+    lr_file = wdir + 'lr.txt'
+
+    if os.path.isfile(lr_file):
+        os.remove(lr_file)
 
     # Initialize
     init_seeds()
@@ -223,9 +227,7 @@ def train():
     scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # This also has warm-up stage of lr
     if opt.resume_etri:
         scheduler.last_epoch = start_epoch - 1 -500
-    print('scheduler.last_epoch: ', scheduler.last_epoch)
-    print("Please check learning rate schedules during the whole epochs!")
-    print('scheduler: ', lr_scheduler)
+
     # {'last_epoch': 29, 'base_lrs': [0.01, 0.01, 0.01], '_step_count': 1, '_get_lr_called_within_step': False,
     #  '_last_lr': [0.01, 0.01, 0.01], 'lr_lambdas': [None, None, None]}
 
@@ -288,6 +290,7 @@ def train():
     print('Starting training for %g epochs...' % epochs)
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
+
         # if start_epoch == 0
         if prebias:
             ne = 3  # number of prebias epochs
@@ -382,8 +385,9 @@ def train():
             pbar.set_description(s)  # display func
             # end batch ------------------------------------------------------------------------------------------------
 
-        # Update scheduler
+        # # Update scheduler
         scheduler.step()
+        print('Updated learning rate: ', optimizer.param_groups[0]['lr'])
 
         # Process epoch results
         # ema.update_attr(model)
@@ -405,6 +409,10 @@ def train():
         # Write epoch results
         with open(results_file, 'a') as f:
             f.write(s + '%10.3g' * 7 % results + '\n')  # P, R, mAP, F1, test_losses=(GIoU, obj, cls)
+
+        with open(lr_file, 'a') as f:
+            f.write('epoch: ' + str(epoch) + ' ' + str(optimizer.param_groups[0]['lr'])+'\n')
+
         if len(opt.name) and opt.bucket:
             os.system('gsutil cp results.txt gs://%s/results/results%s.txt' % (opt.bucket, opt.name))
 
@@ -433,7 +441,7 @@ def train():
         if not os.path.exists(backup_folder):
             os.makedirs(backup_folder)
         backup_path = os.path.join(backup_folder, 'backup%g.pt' % epoch)
-        if epoch % 10 == 0:
+        if epoch % 10 == 0 and epoch >= 50:
             with open(results_file, 'r') as f:
                 # Create checkpoint
                 chkpt = {'epoch': epoch,
@@ -475,16 +483,16 @@ def train():
     # end training
 
     n = opt.name  # =  0
-    if len(n):
-        n = '_' + n if not n.isnumeric() else n
-        fresults, flast, fbest = 'results%s.txt' % n, 'last%s.pt' % n, 'best%s.pt' % n
-        # os.rename('results.txt', fresults)
-        os.rename(wdir + 'last.pt', wdir + flast) if os.path.exists(wdir + 'last.pt') else None
-        os.rename(wdir + 'best.pt', wdir + fbest) if os.path.exists(wdir + 'best.pt') else None
-        if opt.bucket:  # save to cloud
-            os.system('gsutil cp %s gs://%s/results' % (fresults, opt.bucket))
-            os.system('gsutil cp %s gs://%s/weights' % (wdir + flast, opt.bucket))
-            # os.system('gsutil cp %s gs://%s/weights' % (wdir + fbest, opt.bucket))
+    # if len(n):
+    #     n = '_' + n if not n.isnumeric() else n
+    #     fresults, flast, fbest = 'results%s.txt' % n, 'last%s.pt' % n, 'best%s.pt' % n
+    #     # os.rename('results.txt', fresults)
+    #     os.rename(wdir + 'last.pt', wdir + flast) if os.path.exists(wdir + 'last.pt') else None
+    #     os.rename(wdir + 'best.pt', wdir + fbest) if os.path.exists(wdir + 'best.pt') else None
+    #     if opt.bucket:  # save to cloud
+    #         os.system('gsutil cp %s gs://%s/results' % (fresults, opt.bucket))
+    #         os.system('gsutil cp %s gs://%s/weights' % (wdir + flast, opt.bucket))
+    #         # os.system('gsutil cp %s gs://%s/weights' % (wdir + fbest, opt.bucket))
 
     if not opt.evolve:
         plot_results(output=opt.output)  # save as results.png
