@@ -185,8 +185,6 @@ def analyze():
 
     for epoch in range(start_epoch, epochs):
         model.train()
-
-
         if prebias:
             ne = 3  # number of prebias epochs
             ps = 0.1, 0.9  # prebias settings (lr=0.1, momentum=0.9)
@@ -205,8 +203,8 @@ def analyze():
         print(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'GIoU', 'obj', 'cls', 'total', 'targets', 'img_size'))
 
         pbar = tqdm(enumerate(dataloader), total=nb)  # progress bar
-        print('scheduler learning rate: ', scheduler.state_dict())
-        print('learning rate: ', scheduler.get_last_lr())
+        # print('scheduler learning rate: ', scheduler.state_dict())
+        # print('learning rate: ', scheduler.get_last_lr())
 
         # one batch
         for i, (imgs, targets, paths, _) in pbar:
@@ -312,11 +310,6 @@ def analyze():
     torch.cuda.empty_cache()
 
     return results
-
-
-
-
-
 
 
 if __name__ == '__main__':

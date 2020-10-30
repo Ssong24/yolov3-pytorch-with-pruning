@@ -97,9 +97,7 @@ def detect(save_img=False):
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # Display and save arguments
-    # print(opt)
     save_opts(os.path.join(out,'options'), options=opt)
-    print('save_txt: ', save_txt)
 
     # Initialize
     device = torch_utils.select_device(device='cpu' if ONNX_EXPORT else opt.device)
@@ -121,10 +119,10 @@ def detect(save_img=False):
 
     # Second-stage classifier
     classify = False
-    if classify:
-        modelc = torch_utils.load_classifier(name='resnet101', n=2)  # initialize
-        modelc.load_state_dict(torch.load('input/pretrained_weights/resnet101.pt', map_location=device)['model'])  # load weights
-        modelc.to(device).eval()
+    # if classify:
+    #     modelc = torch_utils.load_classifier(name='resnet101', n=2)  # initialize
+    #     modelc.load_state_dict(torch.load('input/pretrained_weights/resnet101.pt', map_location=device)['model'])  # load weights
+    #     modelc.to(device).eval()
 
     # Fuse Conv2d + BatchNorm2d layers
     # model.fuse()
@@ -208,8 +206,8 @@ def detect(save_img=False):
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
 
         # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
+        # if classify:
+        #     pred = apply_classifier(pred, modelc, img, im0s)
 
         # Process detections
         with open(det_path, 'a') as file:
@@ -262,7 +260,7 @@ def detect(save_img=False):
                     raise StopIteration
 
             # Save results (image with detections)
-            if save_img:
+            if save_img:  # maybe no save_txt?
                 if dataset.mode == 'images':
                     print('Done!')
                     cv2.imwrite(save_path, im0)
@@ -280,8 +278,8 @@ def detect(save_img=False):
 
     if save_txt or save_img:
         print('Results saved to %s' % os.getcwd() + os.sep + out)
-        if platform == 'darwin':  # MacOS
-            os.system('open ' + out + ' ' + save_path)
+        # if platform == 'darwin':  # MacOS
+        #     os.system('open ' + out + ' ' + save_path)
 
     print('Done. (%.3fs)' % (time.time() - t0))
 

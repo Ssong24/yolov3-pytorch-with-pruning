@@ -378,6 +378,7 @@ def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#iss
     return 1.0 - 0.5 * eps, 0.5 * eps
 
 
+
 def compute_loss(p, targets, model):  # predictions, targets(=> GT) , model
     # targets = n x [image, class, x, y, w, h]
 

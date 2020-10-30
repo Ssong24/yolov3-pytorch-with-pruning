@@ -63,6 +63,7 @@ def create_modules(module_defs, img_size):
         elif mdef['type'] == 'maxpool':
             size = mdef['size']
             stride = mdef['stride']
+            # print('max_pool - size: {} stride: {} padding: {}'.format(size, stride, (size-1)//2))
             maxpool = nn.MaxPool2d(kernel_size=size, stride=stride, padding=(size - 1) // 2)
             if size == 2 and stride == 1:  # yolov3-tiny
                 modules.add_module('ZeroPad2d', nn.ZeroPad2d((0, 1, 0, 1)))
@@ -297,9 +298,14 @@ class Darknet(nn.Module):
         if verbose:
             str = ''
             # print('0', x.shape)
-
+        # for i, r in enumerate(self.routs):
+        #     if self.routs[i]:
+        #         print(i, end=' ')
+        # print()
         for i, (mdef, module) in enumerate(zip(self.module_defs, self.module_list)):
             mtype = mdef['type']
+
+
             if mtype in ['convolutional', 'upsample', 'maxpool']:
                 x = module(x)
             elif mtype == 'shortcut':  # sum
@@ -320,15 +326,10 @@ class Darknet(nn.Module):
 
                 else:
                     try:
-                        # print('len(layers)!= 1, torch.cat')
                         x = torch.cat([out[i] for i in layers], 1)
                     except:  # apply stride 2 for darknet reorg layer
                         out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
                         x = torch.cat([out[i] for i in layers], 1)
-                # print('route {} - x.shape: {} \n'.format(i, x.shape))
-
-
-
             elif mtype == 'yolo':
                 # print('shape of yolo output: ', (module(x, img_size, out).shape))
                 yolo_out.append(module(x, img_size, out))  # append( idx = 89, 101, 113 YOLO's output )
