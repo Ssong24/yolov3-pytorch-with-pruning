@@ -83,7 +83,6 @@ def test(opt,
         imgs = imgs.to(device).float() / 255.0  # uint8 to float32, 0 - 255 to 0.0 - 1.0
         targets = targets.to(device)
         nb, _, height, width = imgs.shape  # batch size, channels, height, width
-        #print('test.py: height, width= ', height, ',', width) #320, 416
         whwh = torch.Tensor([width, height, width, height]).to(device)
 
         # Plot images with bounding boxes
@@ -103,7 +102,6 @@ def test(opt,
             # Run model
             t = torch_utils.time_synchronized()
             inf_out, train_out = model(imgs)  # inference and training outputs
-            # train_out이 뭐지??
             t0 += torch_utils.time_synchronized() - t
 
             if aug:
@@ -135,10 +133,6 @@ def test(opt,
                     stats.append((torch.zeros(0, niou, dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
                 continue
 
-            # Append to text file
-            # with open('results_test.txt', 'a') as file:
-            #    [file.write('%11.5g' * 7 % tuple(x) + '\n') for x in pred]
-
             # Clip boxes to image bounds
             clip_coords(pred, (height, width))
 
@@ -166,8 +160,7 @@ def test(opt,
                 tbox = xywh2xyxy(labels[:, 1:5]) * whwh # 4x1 [width,height, width, height]
 
                 # Per target class
-                for cls in torch.unique(tcls_tensor):
-                    # print("cls.shape: ", cls.shape)
+                for cls in torch.unique(tcls_tensor):                    
                     # nonzero() -> Return the index of the values which are not zero.
                     ti = (cls == tcls_tensor).nonzero().view(-1)  # prediction indices
                     pi = (cls == pred[:, 5]).nonzero().view(-1)  # target indices
@@ -181,9 +174,6 @@ def test(opt,
                         for j in (ious > iouv[0]).nonzero(): #iouv[0] = 0.5
                             d = ti[i[j]]  # detected target
                             if d not in detected:
-                                # print('test.py: correct - pred.shape[0], niou',pred.shape[0], ', ', niou)
-                                # print('ious: ', ious)
-
                                 detected.append(d)
                                 correct[pi[j]] = ious[j] > iouv # iou_thres is 1xn
                                 if len(detected) == nl:  # all targets already located in image
@@ -217,29 +207,29 @@ def test(opt,
         t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (img_size, img_size, batch_size)  # tuple
         print('Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g' % t)
 
-    # # Save JSON
-    # if save_json and map and len(jdict):
-    #     print('\nCOCO mAP with pycocotools...')
-    #     imgIds = [int(Path(x).stem.split('_')[-1]) for x in dataloader.dataset.img_files]
-    #     with open('results.json', 'w') as file:
-    #         json.dump(jdict, file)
-    #
-    #     try:
-    #         from pycocotools.coco import COCO
-    #         from pycocotools.cocoeval import COCOeval
-    #     except:
-    #         print('WARNING: missing pycocotools package, can not compute official COCO mAP. See requirements.txt.')
-    #
-    #     # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
-    #     cocoGt = COCO(glob.glob('../coco/annotations/instances_val*.json')[0])  # initialize COCO ground truth api
-    #     cocoDt = cocoGt.loadRes('results.json')  # initialize COCO pred api
-    #
-    #     cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
-    #     cocoEval.params.imgIds = imgIds  # [:32]  # only evaluate these images
-    #     cocoEval.evaluate()
-    #     cocoEval.accumulate()
-    #     cocoEval.summarize()
-    #     mf1, map = cocoEval.stats[:2]  # update to pycocotools results (mAP@0.5:0.95, mAP@0.5)
+    # Save JSON
+    if save_json and map and len(jdict):
+        print('\nCOCO mAP with pycocotools...')
+        imgIds = [int(Path(x).stem.split('_')[-1]) for x in dataloader.dataset.img_files]
+        with open('results.json', 'w') as file:
+            json.dump(jdict, file)
+    
+        try:
+            from pycocotools.coco import COCO
+            from pycocotools.cocoeval import COCOeval
+        except:
+            print('WARNING: missing pycocotools package, can not compute official COCO mAP. See requirements.txt.')
+    
+        # https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocoEvalDemo.ipynb
+        cocoGt = COCO(glob.glob('../coco/annotations/instances_val*.json')[0])  # initialize COCO ground truth api
+        cocoDt = cocoGt.loadRes('results.json')  # initialize COCO pred api
+    
+        cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
+        cocoEval.params.imgIds = imgIds  # [:32]  # only evaluate these images
+        cocoEval.evaluate()
+        cocoEval.accumulate()
+        cocoEval.summarize()
+        mf1, map = cocoEval.stats[:2]  # update to pycocotools results (mAP@0.5:0.95, mAP@0.5)
 
     # Return results
     maps = np.zeros(nc) + map
@@ -264,10 +254,7 @@ if __name__ == '__main__':
     parser.add_argument('--output', default='', help='save folder directory')
     opt = parser.parse_args()
     opt.save_json = opt.save_json or any([x in opt.data for x in ['coco.data', 'coco2014.data', 'coco2017.data']])
-    print(opt)
-
-
-    #print('TEST opt: ', opt)
+    
     # task = 'test', 'study', 'benchmark'
     if opt.task == 'test':  # (default) test normally
         test(opt,
