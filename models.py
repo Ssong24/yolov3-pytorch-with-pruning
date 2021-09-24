@@ -243,8 +243,6 @@ class YOLOLayer(nn.Module):
             bs = 1  # batch size
         else:
             bs, _, ny, nx = p.shape  # bs, 255, 13, 13
-            # print('self.nx, self.ny: {}, {}'.format(self.nx, self.ny))
-            # print('nx, ny: {}, {}'.format(nx, ny))
             if (self.nx, self.ny) != (nx, ny):
                 create_grids(self, img_size, (nx, ny), p.device, p.dtype)
 
@@ -296,12 +294,7 @@ class Darknet(nn.Module):
         yolo_out, out = [], []
         # verbose = True
         if verbose:
-            str = ''
-            # print('0', x.shape)
-        # for i, r in enumerate(self.routs):
-        #     if self.routs[i]:
-        #         print(i, end=' ')
-        # print()
+            str = ''            
         for i, (mdef, module) in enumerate(zip(self.module_defs, self.module_list)):
             mtype = mdef['type']
 
@@ -350,7 +343,6 @@ class Darknet(nn.Module):
             x = [torch.cat(x, 0) for x in zip(*yolo_out)]
             return x[0], torch.cat(x[1:3], 1)  # scores, boxes: 3780x80, 3780x4
         else:  # test
-            # zip(*yolo_out)에서 나오는 결과는 training 때랑 어떻게 다름?
             io, p = zip(*yolo_out)  # inference output, training output
             return torch.cat(io, 1), p
 
@@ -543,28 +535,28 @@ def attempt_download(weights):
     # Attempt to download pretrained weights if not found locally
     msg = weights + ' missing, try downloading from https://drive.google.com/open?id=1LezFG5g3BCW6iYaV89B2i64cqEUZD7e0'
 
-    # if weights and not os.path.isfile(weights):
-    #     d = {'yolov3-spp.weights': '16lYS4bcIdM2HdmyJBVDOvt3Trx6N3W2R',
-    #          'yolov3.weights': '1uTlyDWlnaqXcsKOktP5aH_zRDbfcDp-y',
-    #          'yolov3-tiny.weights': '1CCF-iNIIkYesIDzaPvdwlcf7H9zSsKZQ',
-    #          'yolov3-spp.pt': '1f6Ovy3BSq2wYq4UfvFUpxJFNDFfrIDcR',
-    #          'yolov3.pt': '1SHNFyoe5Ni8DajDNEqgB2oVKBb_NoEad',
-    #          'yolov3-tiny.pt': '10m_3MlpQwRtZetQxtksm9jqHrPTHZ6vo',
-    #          'darknet53.conv.74': '1WUVBid-XuoUBmvzBVUCBl_ELrzqwA8dJ',
-    #          'yolov3-tiny.conv.15': '1Bw0kCpplxUqyRYAJr9RY9SGnOJbo9nEj',
-    #          'ultralytics49.pt': '158g62Vs14E3aj7oPVPuEnNZMKFNgGyNq',
-    #          'ultralytics68.pt': '1Jm8kqnMdMGUUxGo8zMFZMJ0eaPwLkxSG',
-    #          'yolov3-spp-ultralytics.pt': '1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4'}
-    #
-    #     file = Path(weights).name
-    #     if file in d:
-    #         r = gdrive_download(id=d[file], name=weights)
-    #     else:  # download from pjreddie.com
-    #         url = 'https://pjreddie.com/media/files/' + file
-    #         print('Downloading ' + url)
-    #         r = os.system('curl -f ' + url + ' -o ' + weights)
-    #
-    #     # Error check
-    #     if not (r == 0 and os.path.exists(weights) and os.path.getsize(weights) > 1E6):  # weights exist and > 1MB
-    #         os.system('rm ' + weights)  # remove partial downloads
-    #         raise Exception(msg)
+    if weights and not os.path.isfile(weights):
+        d = {'yolov3-spp.weights': '16lYS4bcIdM2HdmyJBVDOvt3Trx6N3W2R',
+             'yolov3.weights': '1uTlyDWlnaqXcsKOktP5aH_zRDbfcDp-y',
+             'yolov3-tiny.weights': '1CCF-iNIIkYesIDzaPvdwlcf7H9zSsKZQ',
+             'yolov3-spp.pt': '1f6Ovy3BSq2wYq4UfvFUpxJFNDFfrIDcR',
+             'yolov3.pt': '1SHNFyoe5Ni8DajDNEqgB2oVKBb_NoEad',
+             'yolov3-tiny.pt': '10m_3MlpQwRtZetQxtksm9jqHrPTHZ6vo',
+             'darknet53.conv.74': '1WUVBid-XuoUBmvzBVUCBl_ELrzqwA8dJ',
+             'yolov3-tiny.conv.15': '1Bw0kCpplxUqyRYAJr9RY9SGnOJbo9nEj',
+             'ultralytics49.pt': '158g62Vs14E3aj7oPVPuEnNZMKFNgGyNq',
+             'ultralytics68.pt': '1Jm8kqnMdMGUUxGo8zMFZMJ0eaPwLkxSG',
+             'yolov3-spp-ultralytics.pt': '1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4'}
+    
+        file = Path(weights).name
+        if file in d:
+            r = gdrive_download(id=d[file], name=weights)
+        else:  # download from pjreddie.com
+            url = 'https://pjreddie.com/media/files/' + file
+            print('Downloading ' + url)
+            r = os.system('curl -f ' + url + ' -o ' + weights)
+    
+        # Error check
+        if not (r == 0 and os.path.exists(weights) and os.path.getsize(weights) > 1E6):  # weights exist and > 1MB
+            os.system('rm ' + weights)  # remove partial downloads
+            raise Exception(msg)
