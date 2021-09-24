@@ -72,20 +72,6 @@ def labels_to_image_weights(labels, nc=80, class_weights=np.ones(80)):
     return image_weights
 
 
-# def coco_class_weights():  # frequency of each class in coco train2014
-#     n = [187437, 4955, 30920, 6033, 3838, 4332, 3160, 7051, 7677, 9167, 1316, 1372, 833, 6757, 7355, 3302, 3776, 4671,
-#          6769, 5706, 3908, 903, 3686, 3596, 6200, 7920, 8779, 4505, 4272, 1862, 4698, 1962, 4403, 6659, 2402, 2689,
-#          4012, 4175, 3411, 17048, 5637, 14553, 3923, 5539, 4289, 10084, 7018, 4314, 3099, 4638, 4939, 5543, 2038, 4004,
-#          5053, 4578, 27292, 4113, 5931, 2905, 11174, 2873, 4036, 3415, 1517, 4122, 1980, 4464, 1190, 2302, 156, 3933,
-#          1877, 17630, 4337, 4624, 1075, 3468, 135, 1380]
-#     weights = 1 / torch.Tensor(n)
-#     weights /= weights.sum()
-#     # with open('data/coco.names', 'r') as f:
-#     #     for k, v in zip(f.read().splitlines(), n):
-#     #         print('%20s: %g' % (k, v))
-#     return weights
-
-
 def coco80_to_coco91_class():  # converts 80-index (val2014) to 91-index (paper)
     # https://tech.amikelive.com/node-718/what-object-categories-labels-are-in-coco-dataset/
     # a = np.loadtxt('data/coco.names', dtype='str', delimiter='\n')
@@ -475,10 +461,8 @@ def build_targets(model, targets):
         # anchor_vec = self.anchors.to(device) / self.stride  ; shape = [3,2]
 
         # iou of targets-anchors
-        t, a = targets, []
-        # print('t[:, 4:6]: ', t[:, 4:6])
-        gwh = t[:, 4:6] * ng  # target info for 1x1. --> if multiplying ng, you can find GT wh in grid [13x13] or[26x26],[52x52]
-        # print('gwh: ', gwh)
+        t, a = targets, []        
+        gwh = t[:, 4:6] * ng  # target info for 1x1. --> if multiplying ng, you can find GT wh in grid [13x13] or[26x26],[52x52]        
 
         if nt:  # if len(targets) > 0
             iou = wh_iou(anchor_vec, gwh)
@@ -502,9 +486,6 @@ def build_targets(model, targets):
         gxy = t[:, 2:4] * ng  # grid x, y  -- if multiplying ng, you can find GT wh in grid [13x13] or[26x26],[52x52]
         gi, gj = gxy.long().t()  # grid x, y indices
         # gi = integer of gxy-x = [4, 7, 10, 4] | gj = integer of gxy-y = [4, 3, 4, 4]
-        # print('gxy: ', gxy)
-        # print("b: ", b)
-        # print("a: " , a)
 
         indices.append((b, a, gj, gi))  # gj, gi는 gxy의 정수부분 담당
 
@@ -512,11 +493,6 @@ def build_targets(model, targets):
         gxy -= gxy.floor()  # xy  -> gxy의 소수부분 담당
         tbox.append(torch.cat((gxy, gwh), 1))  # xywh (grids)
         av.append(anchor_vec[a])  # anchor vec
-
-        # print('box: gxy: ', gxy)
-        # print('tbox: ', tbox)
-        # print('av: ', av)
-
 
         # Class
         tcls.append(c)
