@@ -159,10 +159,10 @@ def train():
                         # print(chkpt['model'][k])
 
 
-        # freeze all layers' param except detection layers
+        # When freezing all layers' param except detection layers
         # for i, m in enumerate(model.module_list):
         #     if i not in n_detlayers:
-        #         model.freeze(i) --> Not working --> non-finite loss appeared
+        #         model.freeze(i) 
 
         # Change optimizer's size to new number of classes # chkpt['optimizer'].keys() # ['state', 'param_groups']
 
@@ -320,8 +320,6 @@ def train():
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device).float() / 255.0  # uint8 to float32, 0 - 255 to 0.0 - 1.0
-            # print('targets: ', targets)
-            # print('paths: ', paths)
             targets = targets.to(device)
 
             # Hyper-parameter Burn-in
@@ -331,10 +329,6 @@ def train():
                 for x in model.named_modules():  # initial stats may be poor, wait to track
                     if x[0].endswith('BatchNorm2d'):
                         x[1].track_running_stats = ni == n_burn
-                # for x in optimizer.param_groups:
-                #     x['lr'] = x['initial_lr'] * lf(epoch) * g  # gain rises from 0 - 1
-                #     if 'momentum' in x:
-                #         x['momentum'] = hyp['momentum'] * g
 
             # Plot images with bounding boxes
             if ni < 1:
@@ -609,4 +603,4 @@ if __name__ == '__main__':
             print_mutation(hyp, results, opt.bucket)
 
             # Plot results
-            # plot_evolution_results(hyp)
+            plot_evolution_results(hyp)
