@@ -1,8 +1,4 @@
 # coding: utf-8
-"""
-Pengyi Zhang
-201906
-"""
 import argparse
 
 from models import *
@@ -36,9 +32,7 @@ def route_conv(layer_index, module_defs):
     """
 
     module_def = module_defs[layer_index]
-    mtype = module_def['type']
-    # print('module_def: ', module_def)
-    print('layer_index: ', layer_index, 'mtype: ', mtype)
+    mtype = module_def['type']   
 
     before_conv_id = []
     if mtype in ['convolutional', 'shortcut', 'upsample', 'maxpool']:
@@ -196,11 +190,7 @@ def test(
             layer_i = int(str(module_def['from'][0])) + i
             # print('i: {} \t layer_i: {} \t mtype: {}'.format(i, layer_i, mtype))
             proned_module_defs[i]['is_access'] = False
-
-
-    for i, module_def in enumerate(proned_module_defs):
-        print('{} {}'.format(i, module_def))
-    input()
+    
 
     # Check shortcut(skip connection) related layers' mask and sum, then renew those layers' mask
     layer_number = len(proned_module_defs)  # 125
@@ -222,27 +212,22 @@ def test(
                     bn = int(proned_module_defs[layer_i-1]['batch_normalize'])
                     if bn:
                         Merge_masks.append(proned_module_defs[layer_i-1]["mask"].unsqueeze(0))  # [] --> [ [] ]
-                        # print('layer_i-1: {} \t Merge_masks[-1].shape {}'.format( layer_i-1, Merge_masks[-1].shape))
+                        
 
                 layer_i = int(str(proned_module_defs[layer_i]['from'][0])) + layer_i # 62
                 mtype = proned_module_defs[layer_i]['type']
-                # print('Updated layer_i : {} \t mtype : {} '.format(layer_i, mtype))
 
                 if mtype == 'convolutional':
                     bn = int(proned_module_defs[layer_i]['batch_normalize'])
                     if bn:
                         Merge_masks.append(proned_module_defs[layer_i]["mask"].unsqueeze(0))
-                        # print('layer_i  : {} \t Merge_masks[-1].shape {}'.format(layer_i, Merge_masks[-1].shape))
+                        
 
             if len(Merge_masks) > 1:
-                # print('Merge_masks is list but inside there are 5 tensors which has Size[([1,1024)]')
-                Merge_masks = torch.cat(Merge_masks, 0)  # each tensor combined to one tensor but in different list.
-                # print('len(Merge_masks): ', len(Merge_masks))
-                merge_mask = (torch.sum(Merge_masks, dim=0) > 0).float().cuda() # If torch.sum - element is over 1 -> True --> 1
-                # print('merge_mask.shape: ', merge_mask.shape)
+                Merge_masks = torch.cat(Merge_masks, 0)  # each tensor combined to one tensor but in different list.                
+                merge_mask = (torch.sum(Merge_masks, dim=0) > 0).float().cuda() # If torch.sum - element is over 1 -> True --> 1                
             else:
-                merge_mask = Merge_masks[0].float().cuda()
-                # print('No Merge masks - merge_mask: ', Merge_masks[0].float())
+                merge_mask = Merge_masks[0].float().cuda()                
 
             layer_i = i  # First shortcut layer's i-th
             mtype = 'shortcut'
@@ -277,8 +262,7 @@ def test(
                 if i > 0:
                     conv_indexs = route_conv(i, proned_module_defs)
                     for conv_index in conv_indexs:
-                        mask_before += proned_module_defs[conv_index]["mask"].clone().cpu().numpy().tolist()
-                        print('i: ', i, '\tlen(mask_before): ', len(mask_before), end='\n')
+                        mask_before += proned_module_defs[conv_index]["mask"].clone().cpu().numpy().tolist()                        
                     proned_module_defs[i]['mask_before'] = torch.tensor(mask_before).float().cuda()  # input proned's mask
 
 
@@ -374,7 +358,7 @@ def test(
                 cv2.putText(org_img, str(category_id) + ":" + str('%.1f' % (float(confidence) * 100)) + "%", (int(left), int(top) - 8),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 1)  
 
-        # cv2.imshow("result", org_img)  # --> Cannot terminate program..
+        # cv2.imshow("result", org_img)
         # cv2.waitKey(0)
         cv2.imwrite('result_{}'.format(img_path), org_img)
 
