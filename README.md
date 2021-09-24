@@ -21,4 +21,4 @@ All dependencies are included in the associated docker images. Docker requiremen
 
 # Contact
 
-**Issues should be raised directly in the repository.** Also, you can refer to original repo's issues: https://github.com/ultralytics/yolov3/issues
+**Issues can be raised directly in the repository.** Also, you can refer to original repo's issues: https://github.com/ultralytics/yolov3/issues
